@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Branch Tracker</string>
+    <string name="title_activity_main">Branch Tracker</string>
+    <string name="package_name">com.branchtracker.app</string>
+    <string name="custom_url_scheme">com.branchtracker.app</string>
+
+    <!-- Accessibility Service Description -->
+    <string name="accessibility_service_description">يتيح هذا الإذن لتطبيق Branch Tracker متابعة زيارات الفروع الميدانية وتسجيل الدخول والخروج تلقائياً خلال ساعات العمل.</string>
+</resources>
