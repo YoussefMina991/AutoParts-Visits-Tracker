@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    accessibility_service_config.xml
+    ════════════════════════════════════════════════════════════
+    إعدادات الـ Accessibility Service بتاع التتبع.
+
+    التحسينات على النسخة القديمة:
+    ══════════════════════════════
+    1. accessibilityEventTypes="typeAllMask"
+       → بدل typeWindowStateChanged اللي كانت بس
+       → بيسمع كل أنواع Events عشان الـ service ميتوقفش
+       → بيزيد احتمال إن الأندرويد يفضل يشغل الـ service
+
+    2. canRequestFilterKeyEvents="false"
+       → بنوضح صراحة إننا مش بنراقب الـ keyboard
+       → بيزيد ثقة المستخدم وبيقلل رفضه للصلاحية
+
+    3. canRetrieveWindowContent="false"
+       → مش محتاجين نقرأ محتوى الشاشة
+       → privacy-friendly أكتر
+
+    4. notificationTimeout="100"
+       → أسرع استجابة للـ events
+-->
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+
+    android:description="@string/accessibility_service_description"
+
+    android:accessibilityEventTypes="typeAllMask"
+
+    android:accessibilityFeedbackType="feedbackGeneric"
+
+    android:notificationTimeout="100"
+
+    android:canRetrieveWindowContent="false"
+
+    android:canRequestFilterKeyEvents="false"
+
+    android:settingsActivity="com.branchtracker.app.MainActivity" />
