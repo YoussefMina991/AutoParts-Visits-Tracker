@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1786027525976,
+      "tag": "0000_add_distance_to_visits",
+      "breakpoints": true
+    }
+  ]
+}

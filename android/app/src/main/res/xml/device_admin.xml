@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    device_admin.xml
+    ════════════════════════════════════════════════════════════
+    بيحدد الصلاحيات اللي التطبيق هيطلبها كـ Device Admin.
+
+    بنطلب أقل صلاحيات ممكنة عشان:
+    ══════════════════════════════
+    1. المستخدم يوافق بسهولة أكتر
+    2. Google Play مش يرفض التطبيق لو اتنشر عليه
+    3. نلتزم بمبدأ Principle of Least Privilege
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <!--
+            WATCH_LOGIN: يراقب محاولات فتح الجهاز
+            محتاجه عشان نعرف لما الجهاز بيتفتح ونشغل الـ service لو كان وقف
+        -->
+        <watch-login />
+    </uses-policies>
+</device-admin>

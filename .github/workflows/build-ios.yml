@@ -1,0 +1,57 @@
+name: Build iOS App
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build_ios:
+    name: Build unsigned iOS IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Web App
+        run: pnpm run build
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Build iOS App (Unsigned)
+        run: |
+          cd ios/App
+          # Build the app without Code Signing so we can sideload it later
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            -sdk iphoneos \
+            clean build \
+            CONFIGURATION_BUILD_DIR="$(pwd)/build"
+
+      - name: Create IPA payload
+        run: |
+          cd ios/App/build
+          mkdir Payload
+          cp -R App.app Payload/
+          zip -r app.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BranchTracker-iOS
+          path: ios/App/build/app.ipa
