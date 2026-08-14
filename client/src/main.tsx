@@ -10,7 +10,7 @@ import "./index.css";
 
 // When running as a native Android APK, we need the full server URL.
 // When running in a browser (dev or web), we use the relative path.
-const BASE_URL = import.meta.env.VITE_API_URL || "http://192.168.1.8:3000";
+const BASE_URL = import.meta.env.VITE_API_URL || "https://branch-visit-tracker.up.railway.app/";
 const API_URL = Capacitor.isNativePlatform()
   ? `${BASE_URL}/api/trpc`
   : "/api/trpc";
