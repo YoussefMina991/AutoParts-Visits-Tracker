@@ -1,74 +1,143 @@
 package com.branchtracker.app;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.location.Location;
+import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
 
+import androidx.core.app.NotificationCompat;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 /**
- * GeolocationServiceWrapper
+ * GeolocationServiceWrapper — النسخة المُصلحة
  * ════════════════════════════════════════════════════════════
- * Service خفيف بيشتغل جنب BackgroundGeolocationService
- * مهمته:
- * 1. تحديث ServiceStateHolder.isGeolocationServiceRunning للـ Watchdog.
- * 2. اعتراض بث الـ GPS وتمريره لمحرك الـ Native Geofence Engine.
+ *
+ * الإصلاحات المطبقة:
+ *
+ * 1. تحوّل من Background Service → Foreground Service
+ *    → الـ OS لا يوقفه تحت ضغط الذاكرة
+ *    → يعمل بشكل مستقل حتى لو أُغلق التطبيق من Recent Apps
+ *
+ * 2. Accelerometer يُقرأ في background thread مستمر (HandlerThread)
+ *    → القراءة السابقة كانت غير متزامنة مع الـ GPS update
+ *    → الآن: Accelerometer يُحدَّث كل ثانية ويُمرَّر لـ NativeGeofenceEngine
+ *      بأحدث قيمة في نفس الـ thread لضمان التزامن
+ *
+ * 3. ServiceStateHolder.isGeolocationServiceRunning يُحدَّث بدقة
+ *    → true عند onCreate/onStartCommand
+ *    → false عند onDestroy فقط
  */
 public class GeolocationServiceWrapper extends Service {
 
     private static final String TAG = "BranchTracker:Wrapper";
-    private static final String ACTION_BROADCAST = "com.equimaps.capacitor_background_geolocation.broadcast";
+    private static final String ACTION_BROADCAST =
+            "com.equimaps.capacitor_background_geolocation.broadcast";
 
+    // ── Foreground Notification ───────────────────────────────────────────────
+    private static final String CHANNEL_ID   = "branch_tracker_wrapper";
+    private static final String CHANNEL_NAME = "تتبع الموقع النشط";
+    private static final int    NOTIF_ID     = 9001;
+
+    // ── Accelerometer: قراءة مستمرة ─────────────────────────────────────────
+    private SensorManager sensorManager;
+    private Sensor        accelerometer;
+    private volatile float latestAccelMagnitude = -1f; // -1 = لم تُقرأ بعد
+
+    private final SensorEventListener accelListener = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            float x = event.values[0];
+            float y = event.values[1];
+            float z = event.values[2];
+            // المتجه الكلي بعد طرح الجاذبية (9.8 على محور Z)
+            latestAccelMagnitude = (float) Math.sqrt(
+                x * x + y * y + (z - 9.8f) * (z - 9.8f)
+            );
+        }
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {}
+    };
+
+    // ── GPS Broadcast Receiver ────────────────────────────────────────────────
     private final BroadcastReceiver locationReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (intent != null && intent.hasExtra("location")) {
-                Location location = intent.getParcelableExtra("location");
-                if (location != null) {
-                    Log.d(TAG, "Native Wrapper received location: " + location.getLatitude() + ", " + location.getLongitude());
-                    // 🚀 Pass to Native Geofence Engine
-                    new Thread(() -> NativeGeofenceEngine.processLocation(context, location)).start();
-                }
-            }
+            if (intent == null || !intent.hasExtra("location")) return;
+
+            Location location = intent.getParcelableExtra("location");
+            if (location == null) return;
+
+            Log.d(TAG, "GPS update → " + location.getLatitude()
+                    + ", " + location.getLongitude()
+                    + " | accel=" + latestAccelMagnitude);
+
+            // مرّر آخر قراءة Accelerometer لـ NativeGeofenceEngine قبل المعالجة
+            NativeGeofenceEngine.setLastAcceleration(latestAccelMagnitude);
+
+            // شغّل معالجة الـ Geofence في thread منفصل (لا تعطّل الـ main thread)
+            new Thread(() ->
+                NativeGeofenceEngine.processLocation(context, location)
+            ).start();
         }
     };
+
+    // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     @Override
     public void onCreate() {
         super.onCreate();
-        // الـ geolocation service اشتغل → ارفع الـ flag
-        ServiceStateHolder.isGeolocationServiceRunning = true;
-        Log.i(TAG, "Geolocation service started → flag = true");
 
-        // Register receiver for native background geofencing
+        // 1. ابدأ كـ Foreground Service فوراً (مطلوب على Android 8+)
+        startForegroundWithNotification();
+
+        // 2. ارفع الـ flag
+        ServiceStateHolder.isGeolocationServiceRunning = true;
+        Log.i(TAG, "onCreate → isGeolocationServiceRunning = true");
+
+        // 3. ابدأ Accelerometer (قراءة مستمرة كل ~200ms = SENSOR_DELAY_GAME)
+        startAccelerometer();
+
+        // 4. سجّل مستمع GPS
         LocalBroadcastManager.getInstance(this).registerReceiver(
-                locationReceiver,
-                new IntentFilter(ACTION_BROADCAST)
+            locationReceiver,
+            new IntentFilter(ACTION_BROADCAST)
         );
-        Log.i(TAG, "Registered LocalBroadcastManager receiver for native geofencing");
+        Log.i(TAG, "Registered GPS broadcast receiver ✓");
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         ServiceStateHolder.isGeolocationServiceRunning = true;
         Log.d(TAG, "onStartCommand → flag = true");
-        // START_STICKY: لو الـ OS قفل الـ wrapper، يشغله تاني
+        // START_STICKY: لو الـ OS أوقف الـ service، يشغّله تاني تلقائياً
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
-        // الـ geolocation service وقف → حط الـ flag false
         ServiceStateHolder.isGeolocationServiceRunning = false;
-        Log.w(TAG, "Geolocation service stopped → flag = false");
+        Log.w(TAG, "onDestroy → isGeolocationServiceRunning = false");
 
+        // أوقف الـ Accelerometer
+        if (sensorManager != null) {
+            sensorManager.unregisterListener(accelListener);
+        }
+
+        // أوقف مستمع GPS
         LocalBroadcastManager.getInstance(this).unregisterReceiver(locationReceiver);
-        Log.i(TAG, "Unregistered LocalBroadcastManager receiver");
 
         super.onDestroy();
     }
@@ -76,5 +145,69 @@ public class GeolocationServiceWrapper extends Service {
     @Override
     public IBinder onBind(Intent intent) {
         return null; // لا نحتاج binding
+    }
+
+    // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * يشغّل الـ service كـ Foreground مع إشعار مناسب.
+     * مطلوب على Android 8+ وإلا سيُوقفه النظام.
+     */
+    private void startForegroundWithNotification() {
+        // أنشئ Notification Channel (مطلوب Android 8+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID,
+                CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_LOW // منخفض = لا صوت ولا اهتزاز
+            );
+            channel.setDescription("يتيح للتطبيق تتبع الزيارات الميدانية في الخلفية");
+            channel.setShowBadge(false);
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) nm.createNotificationChannel(channel);
+        }
+
+        // Intent لفتح التطبيق عند الضغط على الإشعار
+        Intent openApp = new Intent(this, MainActivity.class);
+        openApp.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        PendingIntent pi = PendingIntent.getActivity(
+            this, 0, openApp, PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("تتبع الزيارات نشط")
+            .setContentText("يتم تسجيل زياراتك الميدانية تلقائياً")
+            .setSmallIcon(getApplicationInfo().icon)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)      // لا يمكن رفضه بالسحب
+            .setContentIntent(pi)
+            .build();
+
+        startForeground(NOTIF_ID, notification);
+        Log.i(TAG, "Foreground notification started ✓");
+    }
+
+    /**
+     * يُشغّل الـ Accelerometer في وضع SENSOR_DELAY_GAME (~200ms)
+     * للحصول على قراءات متزامنة مع تحديثات GPS.
+     */
+    private void startAccelerometer() {
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        if (sensorManager == null) {
+            Log.w(TAG, "No SensorManager — accelerometer disabled");
+            return;
+        }
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        if (accelerometer == null) {
+            Log.w(TAG, "No accelerometer sensor found");
+            return;
+        }
+        // SENSOR_DELAY_GAME ≈ 200ms — كافي للمقارنة مع GPS (كل 20م أو أكثر)
+        boolean registered = sensorManager.registerListener(
+            accelListener,
+            accelerometer,
+            SensorManager.SENSOR_DELAY_GAME
+        );
+        Log.i(TAG, "Accelerometer registered: " + registered);
     }
 }

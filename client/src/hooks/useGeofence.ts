@@ -89,8 +89,42 @@ export let globalMockedStatus = false;
 
 // ─── Cooldown: يمنع check-in تلقائي متكرر لنفس الفرع ───────────────────────
 // مدة الـ cooldown: 3 دقائق
+// ✅ الإصلاح: يُخزَّن في Preferences (يبقى بعد إعادة فتح التطبيق)
+// بدلاً من Map في الـ memory (تُمسح عند إعادة الفتح → double check-in)
 const CHECK_IN_COOLDOWN_MS = 3 * 60 * 1000;
-const lastCheckInAttempt = new Map<number, number>(); // branchId → timestamp
+
+async function getCooldownKey(branchId: number): Promise<string> {
+  return `checkin_cooldown_${branchId}`;
+}
+
+async function isBranchInCooldown(branchId: number): Promise<boolean> {
+  try {
+    const { Preferences } = await import("@capacitor/preferences");
+    const key = await getCooldownKey(branchId);
+    const { value } = await Preferences.get({ key });
+    if (!value) return false;
+    const lastAttempt = parseInt(value, 10);
+    return Date.now() - lastAttempt < CHECK_IN_COOLDOWN_MS;
+  } catch {
+    return false; // لو فشل الـ Preferences → اسمح بالـ check-in
+  }
+}
+
+async function setBranchCooldown(branchId: number): Promise<void> {
+  try {
+    const { Preferences } = await import("@capacitor/preferences");
+    const key = await getCooldownKey(branchId);
+    await Preferences.set({ key, value: Date.now().toString() });
+  } catch { /* silent */ }
+}
+
+async function clearBranchCooldown(branchId: number): Promise<void> {
+  try {
+    const { Preferences } = await import("@capacitor/preferences");
+    const key = await getCooldownKey(branchId);
+    await Preferences.remove({ key });
+  } catch { /* silent */ }
+}
 
 // ─── Debounce للـ "online" toast (مرة واحدة كل 10 ثواني) ───────────────────
 let lastOnlineToastAt = 0;
@@ -193,17 +227,27 @@ export function useGeofence() {
       const res = await syncVisitsMutationRef.current.mutateAsync({ visits: pending });
 
       if (res.synced > 0 || res.rejected > 0) {
-        const sentIds = new Set(pending.map(v => v.type === "check_in" ? v.localId : v.localCheckInId));
+        // ✅ الإصلاح: احتفظ بالمرفوضات بدلاً من حذفها
+        // failedLocalIds = IDs المرفوضة من السيرفر
+        const failedIds = new Set<string>(res.failedLocalIds ?? []);
+
+        // sentIds = كل ما أرسلناه (الناجح + المرفوض)
+        const sentIds = new Set(
+          pending.map(v => v.type === "check_in" ? v.localId : v.localCheckInId)
+        );
+
         const currentPending = await getPendingVisits();
         const remaining = currentPending.filter((v) => {
           const id = v.type === "check_in" ? v.localId : v.localCheckInId;
-          return !sentIds.has(id);
+          // أبقِ: (لم يُرسَل بعد) أو (أُرسِل لكنه مرفوض → أعد المحاولة لاحقاً)
+          return !sentIds.has(id) || failedIds.has(id);
         });
+
         await setPendingVisits(remaining);
         refetchHistoryRef.current();
 
         if (res.rejected > 0) {
-          toast.warning(`⚠️ ${res.rejected} زيارة رُفضت — تم إبلاغ الإدارة`);
+          toast.warning(`⚠️ ${res.rejected} زيارة رُفضت — سيُعاد المحاولة تلقائياً`);
         }
       }
     } catch {
@@ -244,17 +288,26 @@ export function useGeofence() {
     return () => clearInterval(interval);
   }, []);
 
-  // ── نظام نقاط الشك في الـ JavaScript Layer ───────────────────────────────
-  // بيشتغل لما التطبيق مفتوح على الشاشة (foreground)
-  // النتيجة بتتدمج مع نتيجة الـ Java layer على السيرفر
+  // ── نظام نقاط الشك في الـ JavaScript Layer — النسخة المُصلحة ─────────────
+  //
+  // الإصلاحات:
+  // ① عتبة الكشف خُفّضت من 50 → 30 في الـ JS Layer
+  //    لأن Native Layer هو الحكم الرئيسي — JS Layer دعم إضافي
+  // ② accuracy ≤ 10 فقط (وليس ≤ 15) لتقليل false positives
+  //    accuracy=12 أو 15 طبيعية في المدن المكتظة
+  // ③ فحص ثبات الموقع الجغرافي (lat/lng ثابت = مريب جداً)
+  //    GPS حقيقي لا يُعطي نفس الإحداثيات بالضبط مرتين
+  // ④ Web fallback يفحص accuracy بدقة أكبر
   const calcJsSuspicion = (
     accuracy: number | undefined,
     isMockedFromNative: boolean,
+    currentLat?: number,
+    currentLng?: number,
   ): { score: number; reasons: string[] } => {
     let score = 0;
     const reasons: string[] = [];
 
-    // Native layer قال وهمي صراحة
+    // ① Native layer أكد الـ mock → نقاط كاملة
     if (isMockedFromNative) {
       score += 100;
       reasons.push("NATIVE_IS_MOCKED");
@@ -263,23 +316,48 @@ export function useGeofence() {
     if (accuracy !== undefined) {
       // accuracy = 0 مستحيل في GPS حقيقي
       if (accuracy === 0) {
-        score += 40;
+        score += 50;
         reasons.push("ACCURACY_ZERO");
       }
-      // accuracy رقم صحيح نضيف صغير — Mock apps كتير بتحط 1 أو 5 أو 10
-      else if (accuracy <= 15 && Number.isInteger(accuracy)) {
-        score += 30;
-        reasons.push(`ACCURACY_PERFECT_INTEGER_${accuracy}`);
+      // ② accuracy رقم صحيح صغير جداً ≤ 10 — معظم Mock apps تستخدم 1, 3, 5, 8
+      else if (accuracy <= 10 && Number.isInteger(accuracy)) {
+        score += 25;
+        reasons.push(`ACCURACY_TINY_INTEGER_${accuracy}`);
       }
-      // accuracy ثابت بين أكتر من reading متتالية — GPS حقيقي بيتغير دايماً
-      // (بنتحقق منه عبر recentAccuracies في الـ ref بتاعنا)
+    }
+
+    // ③ فحص ثبات الموقع الجغرافي — أقوى مؤشر للـ Fake GPS
+    // GPS حقيقي يتحرك دائماً حتى لو المستخدم واقف (±2-5 متر)
+    if (currentLat !== undefined && currentLng !== undefined) {
+      const recent = recentPositionsRef.current;
+      recent.push({ lat: currentLat, lng: currentLng });
+      if (recent.length > 6) recent.shift();
+
+      if (recent.length >= 5) {
+        // لو آخر 5 مواقع في نفس الإحداثية بالضبط → Fake GPS
+        const allSameLat = recent.every(p => p.lat === recent[0].lat);
+        const allSameLng = recent.every(p => p.lng === recent[0].lng);
+        if (allSameLat && allSameLng) {
+          score += 50;
+          reasons.push("POSITION_FROZEN_5_READINGS");
+        }
+        // لو الإحداثيات تتغير بأقل من 0.000001 درجة (≈ 11 سم) — مريب جداً
+        else {
+          const latRange = Math.max(...recent.map(p => p.lat)) - Math.min(...recent.map(p => p.lat));
+          const lngRange = Math.max(...recent.map(p => p.lng)) - Math.min(...recent.map(p => p.lng));
+          if (latRange < 0.000001 && lngRange < 0.000001) {
+            score += 35;
+            reasons.push("POSITION_NEAR_FROZEN_5_READINGS");
+          }
+        }
+      }
     }
 
     return { score, reasons };
   };
 
-  // ── نحتفظ بآخر 5 قراءات accuracy عشان نكشف الثبات المريب ──────────────
-  const recentAccuraciesRef = useRef<number[]>([]);
+  // ── مخزن آخر 6 مواقع جغرافية لكشف ثبات الموقع ─────────────────────────
+  const recentPositionsRef = useRef<{ lat: number; lng: number }[]>([]);
 
   // ── Handle a position update ───────────────────────────────────────────────
   const handlePositionUpdate = useCallback(async (
@@ -289,30 +367,14 @@ export function useGeofence() {
     isMocked?: boolean,
   ) => {
     // ── حساب نقاط الشك في الـ JS layer ──────────────────────────────────
-    const { score: jsScore, reasons: jsReasons } = calcJsSuspicion(accuracy, !!isMocked);
+    // نمرر الإحداثيات الحالية لفحص ثبات الموقع (أقوى مؤشر على Fake GPS)
+    const { score: totalJsScore, reasons: allJsReasons } = calcJsSuspicion(
+      accuracy, !!isMocked, currentLat, currentLng
+    );
 
-    // ── Location Consistency: لو accuracy ثابت كتير → مريب ──────────────
-    // GPS حقيقي accuracy بتاعه بيتغير مع كل reading
-    let consistencyScore = 0;
-    const consistencyReasons: string[] = [];
-    if (accuracy !== undefined) {
-      const recent = recentAccuraciesRef.current;
-      recent.push(accuracy);
-      if (recent.length > 5) recent.shift(); // خليها آخر 5 بس
-
-      if (recent.length >= 4) {
-        const allSame = recent.every(a => a === recent[0]);
-        if (allSame) {
-          consistencyScore += 35;
-          consistencyReasons.push("ACCURACY_CONSTANT_OVER_5_READINGS");
-        }
-      }
-    }
-
-    const totalJsScore = jsScore + consistencyScore;
-    const allJsReasons = [...jsReasons, ...consistencyReasons];
-
-    const detectedMock = totalJsScore >= 50;
+    // عتبة الكشف في الـ JS Layer: 30 نقطة (أقل من الـ Native 50)
+    // لأن الـ JS Layer دعم إضافي وليس الحكم الرئيسي
+    const detectedMock = totalJsScore >= 30;
     globalMockedStatus = detectedMock;
     setLatestLocation({ lat: currentLat, lon: currentLng, isMocked: detectedMock });
     if (historyLoadingRef.current) return;
@@ -406,12 +468,11 @@ export function useGeofence() {
       );
       if (dist <= (branch.geofenceRadiusMeters || 200)) {
         // ── Cooldown: تجنب تسجيل الدخول أكثر من مرة للفرع نفسه في 3 دقايق ──
-        const lastAttempt = lastCheckInAttempt.get(branch.id) ?? 0;
-        const now = Date.now();
-        if (now - lastAttempt < CHECK_IN_COOLDOWN_MS) {
+        // ✅ يُحفظ في Preferences → يبقى بعد إعادة فتح التطبيق
+        if (await isBranchInCooldown(branch.id)) {
           break; // في cooldown — تجاهل هذه المحاولة
         }
-        lastCheckInAttempt.set(branch.id, now);
+        await setBranchCooldown(branch.id);
 
         if (isOnline()) {
           try {
@@ -432,7 +493,7 @@ export function useGeofence() {
             } else {
               toast.error(`❌ فشل الدخول: ${err.message || String(err)}`);
               // امسح الـ cooldown عشان يحاول تاني في المرة الجاية
-              lastCheckInAttempt.delete(branch.id);
+              await clearBranchCooldown(branch.id);
             }
           }
         } else {

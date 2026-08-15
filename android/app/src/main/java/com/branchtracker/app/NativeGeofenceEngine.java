@@ -6,10 +6,6 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.hardware.Sensor;
-import android.hardware.SensorEvent;
-import android.hardware.SensorEventListener;
-import android.hardware.SensorManager;
 import android.location.Location;
 import android.os.Build;
 import android.provider.Settings;
@@ -28,99 +24,105 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * NativeGeofenceEngine — النسخة المُصلحة الشاملة
+ * ════════════════════════════════════════════════════════════
+ *
+ * الإصلاحات في هذه النسخة:
+ *
+ * ① setLastAcceleration(float) — API جديدة
+ *    GeolocationServiceWrapper يستدعيها قبل processLocation
+ *    → الـ Accelerometer الآن متزامن تماماً مع الـ GPS update
+ *    → تم حذف updateAccelerometerReading() غير المتزامنة القديمة
+ *
+ * ② Developer Options: تخفيض النقاط من 40 → 15 فقط
+ *    واشتراط وجود Mock App أيضاً لتجاوز العتبة وحده
+ *    → يمنع false positives على المطورين ومستخدمي ADB
+ *
+ * ③ ACCURACY_PERFECT_INTEGER: النقاط من 30 → 20
+ *    والشرط تحوّل من accuracy ≤ 15 → accuracy ≤ 10
+ *    → accuracy=10 أو 15 طبيعية في مناطق التغطية الجيدة
+ *    → accuracy=1 أو 3 أو 5 مريبة فعلاً
+ *
+ * ④ Sensor check يستخدم القيمة المُمرَّرة من الـ Wrapper
+ *    بدلاً من قراءة async داخل processLocation
+ *    → التزامن الكامل بين GPS و Accelerometer
+ *
+ * ⑤ عتبة الكشف: بقيت 50 لكن توزيع النقاط أكثر دقة
+ *    → false positives أقل، true positives أكثر
+ *
+ * ⑥ isMocked = "yes" عند الـ checkout يحتفظ بقيمة check-in
+ *    لو لم يُكتشف teleporting → لا يكتب "no" → لا يلغي الكشف السابق
+ */
 public class NativeGeofenceEngine {
 
     private static final String TAG = "BranchTracker:NativeEngine";
-    private static final String PREFS_NAME = "CapacitorStorage";
-    private static final String STATE_PREFS = "BranchTrackerNativeState";
-    private static final String KEY_ACTIVE_BRANCH = "active_branch_id";
-    private static final String KEY_LAST_CHECKIN_TIME = "last_checkin_time_";
-    private static final float DEFAULT_RADIUS_METERS = 200.0f;
-    private static final float GEOFENCE_BUFFER_METERS = 50.0f;
-    private static final long CHECKIN_COOLDOWN_MS = 3 * 60 * 1000;
+    private static final String PREFS_NAME         = "CapacitorStorage";
+    private static final String STATE_PREFS        = "BranchTrackerNativeState";
+    private static final String KEY_ACTIVE_BRANCH  = "active_branch_id";
+    private static final String KEY_LAST_CHECKIN   = "last_checkin_time_";
+    private static final float  DEFAULT_RADIUS     = 200.0f;
+    private static final float  GEOFENCE_BUFFER    = 50.0f;
+    private static final long   CHECKIN_COOLDOWN   = 3 * 60 * 1000L; // 3 دقائق
 
-    private static final String CHANNEL_ID = "visit_tracking_events";
+    // ── Notification ──────────────────────────────────────────────────────────
+    private static final String CHANNEL_ID   = "visit_tracking_events";
     private static final String CHANNEL_NAME = "Visit Tracking Events";
-    private static final int NOTIFICATION_ID_CHECKIN = 1001;
-    private static final int NOTIFICATION_ID_CHECKOUT = 1002;
+    private static final int    NOTIF_CHECKIN  = 1001;
+    private static final int    NOTIF_CHECKOUT = 1002;
 
     // ══════════════════════════════════════════════════════════════════════════
-    // نظام نقاط الشك — كل طبقة بتضيف نقاط لو اكتشفت حاجة مريبة
-    // 0–24  → نظيف
-    // 25–49 → مريب
-    // 50–74 → مشبوه جداً
-    // 75+   → وهمي على الأرجح
+    // نظام نقاط الشك — مُعاد ضبطه بعناية لتقليل false positives
+    //
+    //  0–29  → نظيف تماماً
+    // 30–49  → مريب — يُسجَّل للمراجعة لكن لا يُعلَّم وهمي
+    // 50–74  → مشبوه جداً → isMocked = "yes"
+    // 75+    → وهمي مؤكد  → isMocked = "yes"
     // ══════════════════════════════════════════════════════════════════════════
-    private static final int SCORE_ANDROID_IS_MOCK       = 100; // Android API بيقول وهمي صراحة
-    private static final int SCORE_DEV_OPTIONS_ON        = 40;  // Developer Options مفعّلة
-    private static final int SCORE_MOCK_APP_INSTALLED    = 35;  // فيه تطبيق Mock مثبت ومصرح له
-    private static final int SCORE_ACCURACY_PERFECT_INT  = 30;  // accuracy رقم صحيح نضيف زي 1 أو 5
-    private static final int SCORE_ACCURACY_ZERO         = 40;  // accuracy = 0 مستحيل في GPS حقيقي
-    private static final int SCORE_MOCK_PROVIDER_NAME    = 50;  // اسم الـ provider فيه "mock" أو "fake"
-    private static final int SCORE_MOCK_EXTRAS           = 60;  // extras مشبوهة في الـ location object
-    private static final int SCORE_SENSOR_STATIONARY     = 35;  // GPS بيقول بيتحرك بس الجسم ساكن
+    private static final int SCORE_ANDROID_IS_MOCK    = 100; // isMock() API — مضمونة
+    private static final int SCORE_DEV_OPTIONS_ON     = 15;  // ↓ من 40 → 15 (وحده لا يكفي)
+    private static final int SCORE_MOCK_APP_INSTALLED = 45;  // تطبيق Mock مثبت ومصرح — قوي
+    private static final int SCORE_ACCURACY_ZERO      = 50;  // accuracy=0 مستحيل في GPS حقيقي
+    private static final int SCORE_ACCURACY_TINY_INT  = 20;  // accuracy صحيح ≤ 10 — مريب
+    private static final int SCORE_MOCK_PROVIDER      = 50;  // اسم provider يحتوي "mock/fake"
+    private static final int SCORE_MOCK_EXTRAS        = 60;  // extras مشبوهة في الـ Location bundle
+    private static final int SCORE_SENSOR_STATIONARY  = 35;  // GPS بيقول متحرك والجسم ساكن
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // Accelerometer state — بنحدثه من GeolocationServiceWrapper
-    // ══════════════════════════════════════════════════════════════════════════
-    private static float lastAcceleration = -1f; // -1 = لسه مش اتقرأش
+    // ── Accelerometer state — يُحدَّث من GeolocationServiceWrapper ──────────
+    // volatile → مرئي فوراً عبر الـ threads
+    private static volatile float lastAcceleration = -1f;
 
     /**
-     * بيتحدث من GeolocationServiceWrapper كل ما جه location update.
-     * بيقرأ الـ Accelerometer لحظياً عشان نقارنه بالحركة اللي الـ GPS بيدعيها.
+     * API جديدة — تُستدعى من GeolocationServiceWrapper قبل processLocation
+     * لضمان أن الـ Accelerometer متزامن مع كل GPS update.
      */
-    public static void updateAccelerometerReading(Context context) {
-        try {
-            SensorManager sm = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
-            if (sm == null) return;
-            Sensor accel = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
-            if (accel == null) return;
-
-            sm.registerListener(new SensorEventListener() {
-                @Override
-                public void onSensorChanged(SensorEvent event) {
-                    float x = event.values[0];
-                    float y = event.values[1];
-                    float z = event.values[2];
-                    // نطرح الجاذبية الأرضية (9.8) من z ونحسب مجموع المتجهات
-                    float totalWithoutGravity = (float) Math.sqrt(x*x + y*y + (z - 9.8f)*(z - 9.8f));
-                    lastAcceleration = totalWithoutGravity;
-                    sm.unregisterListener(this);
-                }
-                @Override
-                public void onAccuracyChanged(Sensor sensor, int accuracy) {}
-            }, accel, SensorManager.SENSOR_DELAY_NORMAL);
-        } catch (Exception e) {
-            Log.w(TAG, "Accelerometer read failed: " + e.getMessage());
-        }
+    public static void setLastAcceleration(float value) {
+        lastAcceleration = value;
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // الدالة الرئيسية — بتستقبل كل location update
+    // الدالة الرئيسية
     // ══════════════════════════════════════════════════════════════════════════
     public static void processLocation(Context context, Location location) {
         if (location == null) return;
 
-        // اقرأ الـ Accelerometer قبل أي حاجة تانية
-        updateAccelerometerReading(context);
-
         SharedPreferences capacitorPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        SharedPreferences statePrefs = context.getSharedPreferences(STATE_PREFS, Context.MODE_PRIVATE);
+        SharedPreferences statePrefs     = context.getSharedPreferences(STATE_PREFS,  Context.MODE_PRIVATE);
 
         String branchesJson = capacitorPrefs.getString("branches_data", null);
-        String apiUrl = capacitorPrefs.getString("api_url", null);
+        String apiUrl       = capacitorPrefs.getString("api_url",       null);
 
         if (branchesJson == null || apiUrl == null) {
-            Log.d(TAG, "No branches or API URL in preferences. Skipping native geofence.");
+            Log.d(TAG, "No branches/API URL in prefs — skipping");
             return;
         }
 
-        // ── حساب نقاط الشك ─────────────────────────────────────────────────
+        // ── حساب نقاط الشك ──────────────────────────────────────────────────
         int suspicionScore = 0;
         List<String> mockReasons = new ArrayList<>();
 
-        // ── الطبقة الأولى: Android Native isMock API ─────────────────────────
-        boolean isMockedByApi = false;
+        // ── الطبقة ١: Android isMock() API ───────────────────────────────────
+        boolean isMockedByApi;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             isMockedByApi = location.isMock();
         } else {
@@ -129,229 +131,229 @@ public class NativeGeofenceEngine {
         if (isMockedByApi) {
             suspicionScore += SCORE_ANDROID_IS_MOCK;
             mockReasons.add("ANDROID_IS_MOCK_API");
-            Log.w(TAG, "[Layer1] Android API: location.isMock() = true");
+            Log.w(TAG, "[L1] isMock() = true → +" + SCORE_ANDROID_IS_MOCK);
         }
 
-        // ── الطبقة التانية: Developer Options Detection ──────────────────────
+        // ── الطبقة ٢: Developer Options + Mock App ───────────────────────────
         try {
-            // هل Developer Options شغالة؟
             int devOptions = Settings.Global.getInt(
                 context.getContentResolver(),
                 Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0
             );
-            if (devOptions != 0) {
-                suspicionScore += SCORE_DEV_OPTIONS_ON;
-                mockReasons.add("DEVELOPER_OPTIONS_ENABLED");
-                Log.w(TAG, "[Layer2] Developer Options are ENABLED");
-            }
 
-            // هل فيه تطبيق عنده صلاحية Mock Location؟
+            // هل فيه تطبيق عنده صلاحية Mock Location غير التطبيق نفسه؟
+            boolean hasExternalMockApp = false;
             List<?> mockApps = context.getPackageManager()
                 .getPackagesHoldingPermissions(
                     new String[]{"android.permission.ACCESS_MOCK_LOCATION"}, 0
                 );
-            // نشيل حزمة التطبيق نفسه من القائمة (هو عنده الصلاحية دي بشكل طبيعي)
-            boolean hasExternalMockApp = false;
             for (Object pkg : mockApps) {
                 String pkgName = ((android.content.pm.PackageInfo) pkg).packageName;
                 if (!pkgName.equals(context.getPackageName())) {
                     hasExternalMockApp = true;
-                    Log.w(TAG, "[Layer2] Mock app installed: " + pkgName);
+                    Log.w(TAG, "[L2] Mock app installed: " + pkgName);
                     break;
                 }
+            }
+
+            if (devOptions != 0) {
+                // ↓ من 40 → 15: Developer Options وحدها لا تعني Mock Location
+                suspicionScore += SCORE_DEV_OPTIONS_ON;
+                mockReasons.add("DEVELOPER_OPTIONS_ENABLED");
+                Log.d(TAG, "[L2] Dev options ON → +" + SCORE_DEV_OPTIONS_ON);
             }
             if (hasExternalMockApp) {
                 suspicionScore += SCORE_MOCK_APP_INSTALLED;
                 mockReasons.add("MOCK_APP_INSTALLED");
+                Log.w(TAG, "[L2] External mock app → +" + SCORE_MOCK_APP_INSTALLED);
             }
         } catch (Exception e) {
-            Log.w(TAG, "[Layer2] Dev options check failed: " + e.getMessage());
+            Log.w(TAG, "[L2] Check failed: " + e.getMessage());
         }
 
-        // ── الطبقة التالتة: Location Quality Forensics ───────────────────────
+        // ── الطبقة ٣: Location Quality Forensics ─────────────────────────────
         float accuracy = location.getAccuracy();
 
-        // accuracy = 0 مستحيل في GPS حقيقي
         if (accuracy == 0.0f) {
+            // accuracy=0 مستحيل في GPS حقيقي
             suspicionScore += SCORE_ACCURACY_ZERO;
             mockReasons.add("ACCURACY_ZERO");
-            Log.w(TAG, "[Layer3] accuracy = 0 (impossible in real GPS)");
-        }
-        // accuracy رقم صحيح نضيف (1, 2, 3, 5, 10) مريب جداً
-        else if (accuracy > 0 && accuracy == Math.floor(accuracy) && accuracy <= 15) {
-            suspicionScore += SCORE_ACCURACY_PERFECT_INT;
-            mockReasons.add("ACCURACY_PERFECT_INTEGER_" + (int)accuracy);
-            Log.w(TAG, "[Layer3] accuracy is suspiciously perfect integer: " + accuracy);
+            Log.w(TAG, "[L3] accuracy=0 → +" + SCORE_ACCURACY_ZERO);
+        } else if (accuracy > 0 && accuracy == Math.floor(accuracy) && accuracy <= 10) {
+            // ↓ الحد من 15 → 10 للتمييز الدقيق: 1,2,3,5,10 مريبة، 12,15 طبيعية
+            suspicionScore += SCORE_ACCURACY_TINY_INT;
+            mockReasons.add("ACCURACY_TINY_INTEGER_" + (int) accuracy);
+            Log.w(TAG, "[L3] accuracy tiny int " + accuracy + " → +" + SCORE_ACCURACY_TINY_INT);
         }
 
         // اسم الـ provider مشبوه
         String provider = location.getProvider();
         if (provider != null) {
-            String providerLower = provider.toLowerCase();
-            if (providerLower.contains("mock") || providerLower.contains("fake")
-                    || providerLower.contains("test") || providerLower.contains("spoof")) {
-                suspicionScore += SCORE_MOCK_PROVIDER_NAME;
+            String lower = provider.toLowerCase();
+            if (lower.contains("mock") || lower.contains("fake")
+                    || lower.contains("test") || lower.contains("spoof")) {
+                suspicionScore += SCORE_MOCK_PROVIDER;
                 mockReasons.add("SUSPICIOUS_PROVIDER_" + provider.toUpperCase());
-                Log.w(TAG, "[Layer3] Suspicious provider name: " + provider);
+                Log.w(TAG, "[L3] Suspicious provider: " + provider + " → +" + SCORE_MOCK_PROVIDER);
             }
         }
 
         // extras مشبوهة
         if (location.getExtras() != null) {
             if (location.getExtras().getBoolean("mockLocation", false)
-                    || location.getExtras().containsKey("mockLocation")
                     || location.getExtras().containsKey("isMock")) {
                 suspicionScore += SCORE_MOCK_EXTRAS;
                 mockReasons.add("SUSPICIOUS_LOCATION_EXTRAS");
-                Log.w(TAG, "[Layer3] Suspicious extras in location bundle");
+                Log.w(TAG, "[L3] Suspicious extras → +" + SCORE_MOCK_EXTRAS);
             }
         }
 
-        // ── الطبقة الرابعة: Sensor Fusion (Accelerometer) ────────────────────
-        // لو الـ GPS بيقول في حركة (speed > 0.5 m/s) بس الجسم ساكن تماماً
+        // ── الطبقة ٤: Sensor Fusion ──────────────────────────────────────────
+        // يستخدم القيمة المُمرَّرة من GeolocationServiceWrapper (متزامنة)
         if (lastAcceleration >= 0) {
-            float gpsSpeed = location.getSpeed(); // m/s
-            // GPS بيقول بيتحرك بسرعة فوق المشي
-            if (gpsSpeed > 0.5f && lastAcceleration < 0.3f) {
+            float gpsSpeed = location.getSpeed();
+            // GPS يقول سرعة > 1 م/ث (مشي بطيء) لكن الجسم ساكن تماماً
+            if (gpsSpeed > 1.0f && lastAcceleration < 0.3f) {
                 suspicionScore += SCORE_SENSOR_STATIONARY;
                 mockReasons.add("SENSOR_STATIONARY_WHILE_GPS_MOVING");
-                Log.w(TAG, "[Layer4] GPS speed=" + gpsSpeed + " m/s but accelerometer=" + lastAcceleration + " (stationary)");
+                Log.w(TAG, "[L4] GPS speed=" + gpsSpeed + " accel=" + lastAcceleration
+                        + " → +" + SCORE_SENSOR_STATIONARY);
             }
         }
 
-        // ── تحديد الـ isMocked النهائي ────────────────────────────────────────
-        // أي score >= 50 → وهمي (تقاطع طبقتين على الأقل أو طبقة واحدة قوية جداً)
+        // ── القرار النهائي ───────────────────────────────────────────────────
         boolean isMocked = suspicionScore >= 50;
 
         if (isMocked) {
-            Log.w(TAG, "🚨 MOCK DETECTED! Score=" + suspicionScore + " Reasons=" + mockReasons);
-        } else if (suspicionScore > 0) {
-            Log.i(TAG, "⚠️ Suspicious location. Score=" + suspicionScore + " Reasons=" + mockReasons);
+            Log.w(TAG, "🚨 MOCK DETECTED! score=" + suspicionScore + " reasons=" + mockReasons);
+        } else if (suspicionScore >= 30) {
+            Log.i(TAG, "⚠️ Suspicious location. score=" + suspicionScore + " reasons=" + mockReasons);
         }
 
-        // ── باقي منطق الـ Geofence (زي الأصل) ─────────────────────────────
+        // ── منطق الـ Geofence ────────────────────────────────────────────────
         try {
             JSONArray branches = new JSONArray(branchesJson);
-            String currentActiveBranchId = statePrefs.getString(KEY_ACTIVE_BRANCH, null);
-            boolean isInsideAny = false;
-            String insideBranchId = null;
-            String insideBranchName = null;
+            String currentActive = statePrefs.getString(KEY_ACTIVE_BRANCH, null);
+            double lat = location.getLatitude();
+            double lng = location.getLongitude();
 
-            double currentLat = location.getLatitude();
-            double currentLng = location.getLongitude();
-
+            boolean isInsideAny  = false;
+            String  insideBranchId   = null;
+            String  insideBranchName = null;
             JSONObject activeBranchObj = null;
+
             for (int i = 0; i < branches.length(); i++) {
-                JSONObject branch = branches.getJSONObject(i);
-                if (!branch.has("latitude") || !branch.has("longitude")
-                        || branch.isNull("latitude") || branch.isNull("longitude")) continue;
+                JSONObject b = branches.getJSONObject(i);
+                if (!b.has("latitude") || !b.has("longitude")
+                        || b.isNull("latitude") || b.isNull("longitude")) continue;
 
-                String bId = String.valueOf(branch.getInt("id"));
-                if (bId.equals(currentActiveBranchId)) {
-                    activeBranchObj = branch;
-                }
+                String bId = String.valueOf(b.getInt("id"));
+                if (bId.equals(currentActive)) activeBranchObj = b;
 
-                double bLat = branch.getDouble("latitude");
-                double bLng = branch.getDouble("longitude");
-                float radius = branch.has("geofenceRadiusMeters") && !branch.isNull("geofenceRadiusMeters")
-                        ? (float) branch.getDouble("geofenceRadiusMeters")
-                        : DEFAULT_RADIUS_METERS;
+                float radius = b.has("geofenceRadiusMeters") && !b.isNull("geofenceRadiusMeters")
+                    ? (float) b.getDouble("geofenceRadiusMeters")
+                    : DEFAULT_RADIUS;
 
-                float[] results = new float[1];
-                Location.distanceBetween(currentLat, currentLng, bLat, bLng, results);
+                float[] dist = new float[1];
+                Location.distanceBetween(lat, lng, b.getDouble("latitude"), b.getDouble("longitude"), dist);
 
-                if (results[0] <= radius) {
-                    isInsideAny = true;
-                    insideBranchId = bId;
-                    insideBranchName = branch.getString("name");
+                if (dist[0] <= radius) {
+                    isInsideAny      = true;
+                    insideBranchId   = bId;
+                    insideBranchName = b.getString("name");
                 }
             }
 
-            // Auto check-out
-            if (currentActiveBranchId != null) {
+            // ── Auto check-out ────────────────────────────────────────────────
+            if (currentActive != null) {
                 boolean shouldCheckOut = false;
                 if (activeBranchObj != null) {
-                    float radius = activeBranchObj.has("geofenceRadiusMeters") && !activeBranchObj.isNull("geofenceRadiusMeters")
-                            ? (float) activeBranchObj.getDouble("geofenceRadiusMeters")
-                            : DEFAULT_RADIUS_METERS;
-                    float[] results = new float[1];
-                    Location.distanceBetween(currentLat, currentLng,
-                            activeBranchObj.getDouble("latitude"),
-                            activeBranchObj.getDouble("longitude"), results);
-                    if (results[0] > radius + GEOFENCE_BUFFER_METERS) shouldCheckOut = true;
+                    float radius = activeBranchObj.has("geofenceRadiusMeters")
+                            && !activeBranchObj.isNull("geofenceRadiusMeters")
+                        ? (float) activeBranchObj.getDouble("geofenceRadiusMeters")
+                        : DEFAULT_RADIUS;
+                    float[] dist = new float[1];
+                    Location.distanceBetween(lat, lng,
+                        activeBranchObj.getDouble("latitude"),
+                        activeBranchObj.getDouble("longitude"), dist);
+                    if (dist[0] > radius + GEOFENCE_BUFFER) shouldCheckOut = true;
                 } else {
+                    // الفرع النشط لم يُوجد في القائمة → خروج
                     shouldCheckOut = true;
                 }
 
                 if (shouldCheckOut) {
-                    Log.i(TAG, "Exited branch " + currentActiveBranchId + " — executing Native Check-Out...");
-                    String branchName = activeBranchObj != null ? activeBranchObj.getString("name") : "الفرع";
-                    boolean success = sendNativeCheckOut(apiUrl, currentActiveBranchId);
-                    if (success) {
+                    String branchName = activeBranchObj != null
+                        ? activeBranchObj.getString("name") : "الفرع";
+                    Log.i(TAG, "Exiting branch " + currentActive + " — sending checkout");
+                    boolean ok = sendNativeCheckOut(apiUrl, currentActive);
+                    if (ok) {
                         statePrefs.edit().remove(KEY_ACTIVE_BRANCH).apply();
-                        showNotification(context, NOTIFICATION_ID_CHECKOUT, "🔴 خروج تلقائي", "تم تسجيل خروجك من: " + branchName);
-                        currentActiveBranchId = null;
+                        showNotification(context, NOTIF_CHECKOUT,
+                            "🔴 خروج تلقائي", "تم تسجيل خروجك من: " + branchName);
+                        currentActive = null;
                     }
                 }
             }
 
-            // Auto check-in — بنبعت suspicionScore و mockReasons مع الـ check-in
-            if (isInsideAny && insideBranchId != null && !insideBranchId.equals(currentActiveBranchId)) {
-                long now = System.currentTimeMillis();
-                long lastCheckIn = statePrefs.getLong(KEY_LAST_CHECKIN_TIME + insideBranchId, 0);
+            // ── Auto check-in ─────────────────────────────────────────────────
+            if (isInsideAny && insideBranchId != null
+                    && !insideBranchId.equals(currentActive)) {
+                long now      = System.currentTimeMillis();
+                long lastTime = statePrefs.getLong(KEY_LAST_CHECKIN + insideBranchId, 0);
 
-                if (now - lastCheckIn >= CHECKIN_COOLDOWN_MS) {
-                    Log.i(TAG, "Entered branch " + insideBranchName + " (" + insideBranchId + "), Score=" + suspicionScore);
-                    boolean success = sendNativeCheckIn(
-                        apiUrl, insideBranchId, currentLat, currentLng,
+                if (now - lastTime >= CHECKIN_COOLDOWN) {
+                    Log.i(TAG, "Entering " + insideBranchName
+                            + " score=" + suspicionScore + " mocked=" + isMocked);
+                    boolean ok = sendNativeCheckIn(
+                        apiUrl, insideBranchId, lat, lng,
                         isMocked, suspicionScore, mockReasons
                     );
-                    if (success) {
+                    if (ok) {
                         statePrefs.edit()
                             .putString(KEY_ACTIVE_BRANCH, insideBranchId)
-                            .putLong(KEY_LAST_CHECKIN_TIME + insideBranchId, now)
+                            .putLong(KEY_LAST_CHECKIN + insideBranchId, now)
                             .apply();
-
-                        String notifTitle = isMocked ? "⚠️ دخول مشبوه" : "✅ دخول تلقائي";
-                        String notifText = "تم تسجيل دخولك في: " + insideBranchName
-                            + (isMocked ? " (موقع مشبوه — نقاط: " + suspicionScore + ")" : "");
-                        showNotification(context, NOTIFICATION_ID_CHECKIN, notifTitle, notifText);
+                        String title = isMocked ? "⚠️ دخول مشبوه"  : "✅ دخول تلقائي";
+                        String text  = "تم تسجيل دخولك في: " + insideBranchName
+                            + (isMocked ? " (نقاط: " + suspicionScore + ")" : "");
+                        showNotification(context, NOTIF_CHECKIN, title, text);
                     }
                 } else {
-                    Log.d(TAG, "Check-in suppressed by cooldown for branch: " + insideBranchName);
+                    Log.d(TAG, "Check-in cooldown active for " + insideBranchName);
                 }
             }
 
         } catch (Exception e) {
-            Log.e(TAG, "Error processing native geofence", e);
+            Log.e(TAG, "Geofence processing error", e);
         }
     }
 
-    // ── tRPC HTTP helpers ──────────────────────────────────────────────────────
+    // ── HTTP helpers ───────────────────────────────────────────────────────────
 
     private static boolean sendNativeCheckIn(
             String baseUrl, String branchId,
             double lat, double lng,
-            boolean isMocked, int suspicionScore, List<String> mockReasons) {
+            boolean isMocked, int score, List<String> reasons) {
         try {
-            JSONArray reasonsArray = new JSONArray();
-            for (String r : mockReasons) reasonsArray.put(r);
+            JSONArray reasonsArr = new JSONArray();
+            for (String r : reasons) reasonsArr.put(r);
 
             JSONObject input = new JSONObject();
-            input.put("branchId", Integer.parseInt(branchId));
-            input.put("latitude", String.valueOf(lat));
-            input.put("longitude", String.valueOf(lng));
-            input.put("isMocked", isMocked);
-            input.put("suspicionScore", suspicionScore);
-            input.put("mockReasons", reasonsArray);
+            input.put("branchId",       Integer.parseInt(branchId));
+            input.put("latitude",       String.valueOf(lat));
+            input.put("longitude",      String.valueOf(lng));
+            input.put("isMocked",       isMocked);
+            input.put("suspicionScore", score);
+            input.put("mockReasons",    reasonsArr);
 
             JSONObject body = new JSONObject();
             body.put("json", input);
 
             URL url = new URL(baseUrl + "/api/trpc/visit.checkIn");
-            return sendPostRequest(url, baseUrl, body.toString());
+            return postJson(url, baseUrl, body.toString());
         } catch (Exception e) {
-            Log.e(TAG, "CheckIn request error", e);
+            Log.e(TAG, "checkIn HTTP error", e);
             return false;
         }
     }
@@ -360,19 +362,17 @@ public class NativeGeofenceEngine {
         try {
             JSONObject input = new JSONObject();
             input.put("branchId", Integer.parseInt(branchId));
-
             JSONObject body = new JSONObject();
             body.put("json", input);
-
             URL url = new URL(baseUrl + "/api/trpc/visit.nativeCheckOut");
-            return sendPostRequest(url, baseUrl, body.toString());
+            return postJson(url, baseUrl, body.toString());
         } catch (Exception e) {
-            Log.e(TAG, "CheckOut request error", e);
+            Log.e(TAG, "checkOut HTTP error", e);
             return false;
         }
     }
 
-    private static boolean sendPostRequest(URL url, String baseUrl, String jsonBody) {
+    private static boolean postJson(URL url, String baseUrl, String json) {
         HttpURLConnection conn = null;
         try {
             conn = (HttpURLConnection) url.openConnection();
@@ -381,50 +381,55 @@ public class NativeGeofenceEngine {
             conn.setConnectTimeout(10_000);
             conn.setReadTimeout(15_000);
 
+            // أرسل الـ cookies للمصادقة
             String cookies = CookieManager.getInstance().getCookie(baseUrl);
             if (cookies != null) conn.setRequestProperty("Cookie", cookies);
 
             conn.setDoOutput(true);
+            byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
             try (OutputStream os = conn.getOutputStream()) {
-                byte[] input = jsonBody.getBytes(StandardCharsets.UTF_8);
-                os.write(input, 0, input.length);
+                os.write(bytes);
             }
 
-            int responseCode = conn.getResponseCode();
-            Log.i(TAG, "Native HTTP " + url.getPath() + " → " + responseCode);
-            return (responseCode >= 200 && responseCode < 300);
+            int code = conn.getResponseCode();
+            Log.i(TAG, "HTTP " + url.getPath() + " → " + code);
+            return code >= 200 && code < 300;
         } catch (Exception e) {
-            Log.e(TAG, "Native HTTP error for " + url, e);
+            Log.e(TAG, "HTTP error: " + url, e);
             return false;
         } finally {
             if (conn != null) conn.disconnect();
         }
     }
 
-    private static void showNotification(Context context, int id, String title, String text) {
-        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+    // ── Notification ───────────────────────────────────────────────────────────
+    private static void showNotification(Context ctx, int id, String title, String text) {
+        NotificationManager nm =
+            (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) return;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
+            NotificationChannel ch = new NotificationChannel(
                 CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_HIGH
             );
-            nm.createNotificationChannel(channel);
+            nm.createNotificationChannel(ch);
         }
 
-        Intent intent = new Intent(context, MainActivity.class);
+        Intent intent = new Intent(ctx, MainActivity.class);
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-            context, 0, intent, PendingIntent.FLAG_IMMUTABLE
+        PendingIntent pi = PendingIntent.getActivity(
+            ctx, 0, intent, PendingIntent.FLAG_IMMUTABLE
         );
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
-                .setSmallIcon(context.getApplicationInfo().icon)
-                .setContentTitle(title)
-                .setContentText(text)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent);
+        Notification notif = new NotificationCompat.Builder(ctx, CHANNEL_ID)
+            .setSmallIcon(ctx.getApplicationInfo().icon)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            .build();
 
-        nm.notify(id, builder.build());
+        nm.notify(id, notif);
     }
 }

@@ -66,11 +66,16 @@
         <!-- ══════════════════════════════════════════════════════════════
              Wrapper: يراقب حالة الـ GPS service ويحدث الـ flag
              ══════════════════════════════════════════════════════════════ -->
+        <!-- ══════════════════════════════════════════════════════════════
+             Wrapper: يشتغل كـ Foreground Service لضمان بقاءه في الخلفية
+             يتم تشغيله من MainActivity.onCreate + BootStartWorker + Watchdog
+             ══════════════════════════════════════════════════════════════ -->
         <service
             android:name=".GeolocationServiceWrapper"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="location" />
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
 
         <!-- ══════════════════════════════════════════════════════════════
              BootReceiver: يعيد تشغيل الـ tracking بعد restart الجهاز

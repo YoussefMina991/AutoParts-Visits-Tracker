@@ -196,10 +196,15 @@ export const visitRouter = router({
         }
       }
 
+      // نفس المنطق: لا نكتب "no" أبداً — فقط "yes" إذا اكتشفنا teleporting
+      const nativeCheckOutMockedUpdate = isTeleporting
+        ? { isMocked: "yes" as const }
+        : {};
+
       await db.update(visits).set({
         checkOutAt: now,
         status: "checked_out",
-        isMocked: isTeleporting ? "yes" : undefined, // لو اكتشفنا سرعة خيالية نعلّمها وهمي
+        ...nativeCheckOutMockedUpdate,
         ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm } : {}),
       }).where(and(
         eq(visits.id, visit.id),
@@ -287,10 +292,18 @@ export const visitRouter = router({
       }
 
       // ── اعمل الـ checkout وحدّث المسافة في نفس الوقت ────────────────────────
+      // isMocked:
+      // - لو اكتشفنا teleporting → "yes" (يُلغي حتى لو check-in كان "no")
+      // - لو لم نكتشف → undefined (لا نُعدّل — نحافظ على قرار check-in)
+      // لا نكتب "no" أبداً هنا لأن check-in ربما اكتشف mock ونريد الاحتفاظ بذلك
+      const checkOutMockedUpdate = isTeleporting
+        ? { isMocked: "yes" as const }
+        : {};
+
       await db.update(visits).set({
         checkOutAt: now,
         status: "checked_out",
-        isMocked: isTeleporting ? "yes" : undefined,
+        ...checkOutMockedUpdate,
         ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm } : {}),
       }).where(and(
         eq(visits.id, input.visitId),
@@ -594,11 +607,16 @@ export const visitRouter = router({
             }
           }
 
+          // لا نكتب "no" — نحافظ على قرار check-in إذا لم يُكتشف teleporting
+          const syncCheckOutMockedUpdate = isTeleporting
+            ? { isMocked: "yes" as const }
+            : {};
+
           await db.update(visits)
             .set({
               checkOutAt: checkOutTime,
               status: "checked_out",
-              isMocked: isTeleporting ? "yes" : undefined,
+              ...syncCheckOutMockedUpdate,
               ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm } : {}),
             })
             .where(and(
