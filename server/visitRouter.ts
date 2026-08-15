@@ -111,7 +111,7 @@ export const visitRouter = router({
       // السيرفر بيقرر isMocked لو score >= 50 (بغض النظر عما قاله الـ client)
       const finalIsMocked = input.isMocked || clientScore >= 50;
       const finalScore    = clientScore;
-      const finalReasons  = JSON.stringify(clientReasons);
+      const finalReasons  = clientReasons.length > 0 ? JSON.stringify(clientReasons) : null;
 
       // ✅ المسافة هتتحسب وقت الـ Check-Out مش هنا — بنحفظ distanceToPrevBranchKm = null دلوقتي
       await db.insert(visits).values({
@@ -522,7 +522,7 @@ export const visitRouter = router({
             status: "checked_in",
             isMocked: ciFinalMocked ? "yes" : "no",
             suspicionScore: ciScore,
-            mockReasons: JSON.stringify(ciReasons),
+            mockReasons: ciReasons.length > 0 ? JSON.stringify(ciReasons) : null,
             distanceToPrevBranchKm: undefined,
           }).$returningId();
 

@@ -82,7 +82,7 @@ export const visits = mysqlTable("visits", {
 
   // mockReasons: JSON array بأسباب الشك — بيساعد الأدمن يفهم ليه اتعلمت مشبوهة
   // مثال: ["DEVELOPER_OPTIONS_ON", "ACCURACY_PERFECT_INTEGER", "SENSOR_STATIONARY"]
-  mockReasons: text("mockReasons").default("[]").notNull(),
+  mockReasons: text("mockReasons"),
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
