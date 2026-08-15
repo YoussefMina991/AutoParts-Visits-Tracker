@@ -244,6 +244,43 @@ export function useGeofence() {
     return () => clearInterval(interval);
   }, []);
 
+  // ── نظام نقاط الشك في الـ JavaScript Layer ───────────────────────────────
+  // بيشتغل لما التطبيق مفتوح على الشاشة (foreground)
+  // النتيجة بتتدمج مع نتيجة الـ Java layer على السيرفر
+  const calcJsSuspicion = (
+    accuracy: number | undefined,
+    isMockedFromNative: boolean,
+  ): { score: number; reasons: string[] } => {
+    let score = 0;
+    const reasons: string[] = [];
+
+    // Native layer قال وهمي صراحة
+    if (isMockedFromNative) {
+      score += 100;
+      reasons.push("NATIVE_IS_MOCKED");
+    }
+
+    if (accuracy !== undefined) {
+      // accuracy = 0 مستحيل في GPS حقيقي
+      if (accuracy === 0) {
+        score += 40;
+        reasons.push("ACCURACY_ZERO");
+      }
+      // accuracy رقم صحيح نضيف صغير — Mock apps كتير بتحط 1 أو 5 أو 10
+      else if (accuracy <= 15 && Number.isInteger(accuracy)) {
+        score += 30;
+        reasons.push(`ACCURACY_PERFECT_INTEGER_${accuracy}`);
+      }
+      // accuracy ثابت بين أكتر من reading متتالية — GPS حقيقي بيتغير دايماً
+      // (بنتحقق منه عبر recentAccuracies في الـ ref بتاعنا)
+    }
+
+    return { score, reasons };
+  };
+
+  // ── نحتفظ بآخر 5 قراءات accuracy عشان نكشف الثبات المريب ──────────────
+  const recentAccuraciesRef = useRef<number[]>([]);
+
   // ── Handle a position update ───────────────────────────────────────────────
   const handlePositionUpdate = useCallback(async (
     currentLat: number,
@@ -251,12 +288,31 @@ export function useGeofence() {
     accuracy?: number,
     isMocked?: boolean,
   ) => {
-    // ── Enhanced Web/Hybrid Mock Detection ───────────────────────────
-    let detectedMock = !!isMocked;
-    
-    // 1. Accuracy Check: Real GPS accuracy is almost never exactly 0 or 1.00000
-    if (accuracy === 0 || accuracy === 1) detectedMock = true;
-    
+    // ── حساب نقاط الشك في الـ JS layer ──────────────────────────────────
+    const { score: jsScore, reasons: jsReasons } = calcJsSuspicion(accuracy, !!isMocked);
+
+    // ── Location Consistency: لو accuracy ثابت كتير → مريب ──────────────
+    // GPS حقيقي accuracy بتاعه بيتغير مع كل reading
+    let consistencyScore = 0;
+    const consistencyReasons: string[] = [];
+    if (accuracy !== undefined) {
+      const recent = recentAccuraciesRef.current;
+      recent.push(accuracy);
+      if (recent.length > 5) recent.shift(); // خليها آخر 5 بس
+
+      if (recent.length >= 4) {
+        const allSame = recent.every(a => a === recent[0]);
+        if (allSame) {
+          consistencyScore += 35;
+          consistencyReasons.push("ACCURACY_CONSTANT_OVER_5_READINGS");
+        }
+      }
+    }
+
+    const totalJsScore = jsScore + consistencyScore;
+    const allJsReasons = [...jsReasons, ...consistencyReasons];
+
+    const detectedMock = totalJsScore >= 50;
     globalMockedStatus = detectedMock;
     setLatestLocation({ lat: currentLat, lon: currentLng, isMocked: detectedMock });
     if (historyLoadingRef.current) return;
@@ -363,9 +419,11 @@ export function useGeofence() {
               branchId: branch.id,
               latitude: currentLat.toString(),
               longitude: currentLng.toString(),
-              isMocked: !!isMocked,
+              isMocked: detectedMock,
+              suspicionScore: totalJsScore,
+              mockReasons: allJsReasons,
             });
-            toast.success(`✅ تسجيل دخول تلقائي في ${branch.name}${ isMocked ? " ⚠️ موقع وهمي" : ""}`);
+            toast.success(`✅ تسجيل دخول تلقائي في ${branch.name}${ detectedMock ? " ⚠️ موقع مشبوه" : ""}`);
             refetchHistoryRef.current();
           } catch (err: any) {
             if (err.message?.includes("Already checked")) {
@@ -389,7 +447,9 @@ export function useGeofence() {
             accuracy: accuracy?.toString(),
             checkInAt: new Date().toISOString(),
             localId,
-            isMocked: !!isMocked,
+            isMocked: detectedMock,
+            suspicionScore: totalJsScore,
+            mockReasons: allJsReasons,
           });
           await setPendingVisits(pending);
           toast.success(`✅ دخول مؤقت في ${branch.name} — سيُرسل لما النت يرجع`);

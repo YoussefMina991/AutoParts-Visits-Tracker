@@ -71,6 +71,9 @@ export const visitRouter = router({
       photoBase64: z.string().optional(),
       notes: z.string().optional(),
       isMocked: z.boolean().optional(),
+      // ── نظام كشف التلاعب المتقدم ──────────────────────────────────────
+      suspicionScore: z.number().min(0).max(500).optional(),
+      mockReasons: z.array(z.string()).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -101,13 +104,24 @@ export const visitRouter = router({
         photoUrl = stored.url;
       }
 
+      // ── دمج نقاط الشك من الـ client مع أي فحوصات إضافية على السيرفر ──────
+      const clientScore   = input.suspicionScore ?? 0;
+      const clientReasons = input.mockReasons    ?? [];
+
+      // السيرفر بيقرر isMocked لو score >= 50 (بغض النظر عما قاله الـ client)
+      const finalIsMocked = input.isMocked || clientScore >= 50;
+      const finalScore    = clientScore;
+      const finalReasons  = JSON.stringify(clientReasons);
+
       // ✅ المسافة هتتحسب وقت الـ Check-Out مش هنا — بنحفظ distanceToPrevBranchKm = null دلوقتي
       await db.insert(visits).values({
         managerId: manager.id, branchId: input.branchId,
         latitudeIn: input.latitude, longitudeIn: input.longitude,
         accuracyIn: input.accuracy, photoUrl, notes: input.notes,
         status: "checked_in",
-        isMocked: input.isMocked ? "yes" : "no",
+        isMocked: finalIsMocked ? "yes" : "no",
+        suspicionScore: finalScore,
+        mockReasons: finalReasons,
         distanceToPrevBranchKm: undefined,  // هيتحدث وقت الـ checkout
       });
       return { success: true };
@@ -258,10 +272,15 @@ export const visitRouter = router({
             .limit(1);
 
           if (prevVisit[0]?.checkOutAt) {
-            const timeDiffHours = (visit.checkInAt.getTime() - prevVisit[0].checkOutAt.getTime()) / 3600000;
+            const timeDiffMs = visit.checkInAt.getTime() - prevVisit[0].checkOutAt.getTime();
+            const timeDiffHours = timeDiffMs / 3600000;
+            
             if (timeDiffHours > 0) {
               const speed = km / timeDiffHours;
               if (speed > 150) isTeleporting = true;
+            } else if (km > 0.1 && timeDiffMs <= 0) {
+              // لو المسافة حقيقية والزمن صفر (نفس الدقيقة) -> تلاعب
+              isTeleporting = true;
             }
           }
         }
@@ -436,6 +455,8 @@ export const visitRouter = router({
           checkInAt: z.string(),
           localId: z.string(),
           isMocked: z.boolean().optional(),
+          suspicionScore: z.number().min(0).max(500).optional(),
+          mockReasons: z.array(z.string()).optional(),
         }),
         z.object({
           type: z.literal("check_out"),
@@ -487,6 +508,10 @@ export const visitRouter = router({
           }
 
           // ✅ check-in offline: مسافة = null دلوقتي — هتتحسب عند الـ checkout
+          const ciScore   = ci.suspicionScore ?? 0;
+          const ciReasons = ci.mockReasons    ?? [];
+          const ciFinalMocked = ci.isMocked || ciScore >= 50;
+
           const [inserted] = await db.insert(visits).values({
             managerId: manager.id,
             branchId: ci.branchId,
@@ -495,7 +520,9 @@ export const visitRouter = router({
             accuracyIn: ci.accuracy,
             checkInAt: new Date(ci.checkInAt),
             status: "checked_in",
-            isMocked: ci.isMocked ? "yes" : "no",
+            isMocked: ciFinalMocked ? "yes" : "no",
+            suspicionScore: ciScore,
+            mockReasons: JSON.stringify(ciReasons),
             distanceToPrevBranchKm: undefined,
           }).$returningId();
 
@@ -550,8 +577,18 @@ export const visitRouter = router({
                   .limit(1);
 
                 if (prevVisit[0]?.checkOutAt) {
-                  const timeDiffHours = (checkInTime.getTime() - prevVisit[0].checkOutAt.getTime()) / 3600000;
-                  if (timeDiffHours > 0 && (km / timeDiffHours) > 150) isTeleporting = true;
+                  const timeDiffMs = checkInTime.getTime() - prevVisit[0].checkOutAt.getTime();
+                  const timeDiffHours = timeDiffMs / 3600000;
+                  
+                  // ── حماية من الانتقال اللحظي (نفس الدقيقة أو أقل) ─────────────
+                  // لو المسافة موجودة والسرعة خيالية (> 150 كم/س)
+                  if (timeDiffHours > 0 && (km / timeDiffHours) > 150) {
+                    isTeleporting = true;
+                  } 
+                  // لو المسافة موجودة والزمن صفر أو سالب (انتقال آني)
+                  else if (km > 0.1 && timeDiffMs <= 0) {
+                    isTeleporting = true;
+                  }
                 }
               }
             }

@@ -71,6 +71,19 @@ export const visits = mysqlTable("visits", {
   status: mysqlEnum("status", ["checked_in", "checked_out"]).default("checked_in").notNull(),
   isMocked: mysqlEnum("isMocked", ["yes", "no"]).default("no").notNull(),
   distanceToPrevBranchKm: decimal("distanceToPrevBranchKm", { precision: 8, scale: 2 }), // المسافة بالكيلومتر من الفرع السابق — decimal عشان يحفظ الكسور (7.5 كم مثلاً)
+
+  // ── نظام كشف التلاعب المتقدم ──────────────────────────────────────────────
+  // suspicionScore: مجموع نقاط الشك (0 = نظيف، كل طبقة بتضيف نقاط)
+  // 0–24   → نظيف
+  // 25–49  → مريب — يستحق مراجعة
+  // 50–74  → مشبوه جداً
+  // 75+    → وهمي على الأرجح
+  suspicionScore: int("suspicionScore").default(0).notNull(),
+
+  // mockReasons: JSON array بأسباب الشك — بيساعد الأدمن يفهم ليه اتعلمت مشبوهة
+  // مثال: ["DEVELOPER_OPTIONS_ON", "ACCURACY_PERFECT_INTEGER", "SENSOR_STATIONARY"]
+  mockReasons: text("mockReasons").default("[]").notNull(),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
