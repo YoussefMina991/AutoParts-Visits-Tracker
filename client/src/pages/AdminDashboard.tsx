@@ -1,365 +1,739 @@
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { format, subDays, startOfWeek, addDays } from "date-fns";
 import { useLocation } from "wouter";
-import { format } from "date-fns";
-import { ar } from "date-fns/locale";
-import { Loader2 } from "lucide-react";
 
-// صور المديرين — مؤقتة لحد ما تتضاف للداتابيز
-const MANAGER_PHOTOS: Record<string, string> = {
-  "مينا محسن":       "https://res.cloudinary.com/xo69zo4p/image/upload/v1785100980/WhatsApp_Image_2026-07-27_at_12.14.15_AM_pmp0xk.jpg",
-  "احمد خالد":       "https://res.cloudinary.com/xo69zo4p/image/upload/v1785100980/WhatsApp_Image_2026-07-27_at_12.14.15_AM_pmp0xk.jpg",
-  "محمد عبدالستار":  "https://res.cloudinary.com/xo69zo4p/image/upload/v1785100980/WhatsApp_Image_2026-07-27_at_12.14.15_AM_pmp0xk.jpg",
-  "يوسف مينا":       "https://res.cloudinary.com/xo69zo4p/image/upload/v1785100980/WhatsApp_Image_2026-07-27_at_12.14.15_AM_pmp0xk.jpg",
-};
+// ─── Design tokens ────────────────────────────────────────────────────────────
+// bg:        #F4F4F5   surface:   #FFFFFF   border:    #E4E4E7
+// text-1:    #18181B   text-2:    #71717A   text-3:    #A1A1AA
+// accent:    #18181B   green:     #16A34A   red:       #DC2626
+// amber:     #D97706   radius-sm: 12px      radius-md: 16px
+// font:      Inter, -apple-system, sans-serif
 
-// كارت المدير
-function ManagerCard({ name, photoUrl, branchName, status }: {
-  name: string;
-  photoUrl?: string | null;
-  branchName: string | null;
-  status: "checked_in" | "checked_out" | null;
-}) {
-  const photo = photoUrl || MANAGER_PHOTOS[name];
-  const isActive = status === "checked_in";
-  const initials = name.split(" ").map(w => w[0]).join("").slice(0, 2);
-
+// ─── Avatar ───────────────────────────────────────────────────────────────────
+function Avatar({ name, photoUrl, size = 36 }: { name?: string; photoUrl?: string | null; size?: number }) {
+  const style: React.CSSProperties = {
+    width: size,
+    height: size,
+    borderRadius: size / 2,
+    flexShrink: 0,
+    objectFit: "cover" as const,
+  };
+  if (photoUrl) return <img src={photoUrl} alt={name} style={style} />;
   return (
-    <div className="bg-white rounded-2xl p-5 border border-[#EDE9FE] hover:shadow-lg hover:shadow-[#A78BFA]/15 hover:-translate-y-0.5 transition-all duration-200 flex flex-col items-center gap-4 relative">
+    <div
+      style={{
+        ...style,
+        background: "#F4F4F5",
+        border: "1px solid #E4E4E7",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: size * 0.38,
+        fontWeight: 700,
+        color: "#71717A",
+      }}
+    >
+      {name?.charAt(0) || "?"}
+    </div>
+  );
+}
 
-      {/* Badge الحالة */}
-      <div className={`absolute top-3 left-3 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-        isActive ? "bg-[#ECFDF5] text-[#059669]" : "bg-[#F3F4F6] text-[#9CA3AF]"
-      }`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-[#059669] animate-pulse" : "bg-[#D1D5DB]"}`} />
-        {isActive ? "داخل" : "خارج"}
-      </div>
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+function Skeleton({ w = "100%", h = 16, r = 8 }: { w?: string | number; h?: number; r?: number }) {
+  return (
+    <div
+      style={{
+        width: w,
+        height: h,
+        borderRadius: r,
+        background: "linear-gradient(90deg, #F4F4F5 25%, #EBEBEB 50%, #F4F4F5 75%)",
+        backgroundSize: "200% 100%",
+        animation: "shimmer 1.4s infinite",
+      }}
+    />
+  );
+}
 
-      {/* الصورة */}
-      <div className="relative mt-2">
-        {photo ? (
-          <img
-            src={photo}
-            alt={name}
-            className="w-20 h-20 rounded-2xl object-cover border-2 border-[#EDE9FE]"
-          />
+// ─── KPI Card ─────────────────────────────────────────────────────────────────
+function KpiCard({
+  label, value, icon, iconColor, valueColor = "#18181B", loading,
+}: {
+  label: string; value: string | number; icon: string;
+  iconColor: string; valueColor?: string; loading?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid #E4E4E7",
+        borderRadius: 16,
+        padding: "18px 20px",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 12,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "#A1A1AA", textTransform: "uppercase", marginBottom: 8 }}>
+          {label}
+        </p>
+        {loading ? (
+          <Skeleton w={60} h={32} r={6} />
         ) : (
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#7C3AED] to-[#A78BFA] flex items-center justify-center border-2 border-[#EDE9FE]">
-            <span className="text-white font-bold text-2xl" style={{ fontFamily: "'Cairo', sans-serif" }}>{initials}</span>
-          </div>
+          <p style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: valueColor, fontVariantNumeric: "tabular-nums" }}>
+            {value}
+          </p>
         )}
-        {/* نقطة الحالة على الصورة */}
-        <span className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${isActive ? "bg-[#059669]" : "bg-[#D1D5DB]"}`} />
       </div>
-
-      {/* الاسم */}
-      <div className="text-center">
-        <p className="font-bold text-[#111827] text-sm leading-tight" style={{ fontFamily: "'Cairo', sans-serif" }}>{name}</p>
-      </div>
-
-      {/* الفرع */}
-      <div className={`w-full rounded-xl px-3 py-2.5 text-center ${
-        isActive ? "bg-[#EDE9FE]" : "bg-[#F9FAFB]"
-      }`}>
-        {isActive && branchName ? (
-          <>
-            <p className="text-[10px] text-[#9CA3AF] mb-0.5">الفرع الحالي</p>
-            <p className="font-bold text-[#7C3AED] text-sm" style={{ fontFamily: "'Cairo', sans-serif" }}>{branchName}</p>
-          </>
-        ) : (
-          <p className="text-[#9CA3AF] text-xs">غير متواجد في فرع</p>
-        )}
+      <div
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 12,
+          background: iconColor + "18",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <span
+          className="material-symbols-outlined"
+          style={{ fontSize: 20, color: iconColor, fontVariationSettings: "'FILL' 1" }}
+        >
+          {icon}
+        </span>
       </div>
     </div>
   );
 }
 
-// ─── VisitRow ─────────────────────────────────────────────────────────────────
-function VisitRow({ name, time, status, manager, isMocked }: {
-  name: string; time: string; status: "checked_in" | "checked_out"; manager: string; isMocked?: "yes" | "no";
+// ─── Section Header ───────────────────────────────────────────────────────────
+function SectionHeader({ title, badge, action }: {
+  title: string;
+  badge?: React.ReactNode;
+  action?: React.ReactNode;
 }) {
-  const isActive = status === "checked_in";
   return (
-    <div className="flex items-center gap-3 py-3 border-b border-[#F3F4F6] last:border-0 hover:bg-[#FAFAFA] rounded-xl px-2 transition-colors cursor-pointer">
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${isActive ? "bg-[#EDE9FE]" : "bg-[#ECFDF5]"}`}>
-        <span className={`material-symbols-outlined text-[18px] ${isActive ? "text-[#7C3AED]" : "text-[#059669]"}`}
-          style={{ fontVariationSettings: "'FILL' 1" }}>
-          {isActive ? "radio_button_checked" : "task_alt"}
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: "#18181B" }}>{title}</p>
+        {badge}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+// ─── Panel ────────────────────────────────────────────────────────────────────
+function Panel({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid #E4E4E7",
+        borderRadius: 16,
+        overflow: "hidden",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// ─── Active Manager Card (horizontal scroll) ──────────────────────────────────
+function ActiveManagerCard({ m }: { m: any }) {
+  const checkinTime = m.location?.timestamp
+    ? (() => {
+        const diff = Math.round((Date.now() - new Date(m.location.timestamp).getTime()) / 60000);
+        if (diff < 1) return "Just now";
+        if (diff < 60) return `${diff}m ago`;
+        return `${Math.floor(diff / 60)}h ago`;
+      })()
+    : null;
+
+  return (
+    <div
+      style={{
+        minWidth: 200,
+        background: "#fff",
+        border: "1px solid #E4E4E7",
+        borderRadius: 14,
+        padding: "14px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        flexShrink: 0,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ position: "relative" }}>
+          <Avatar name={m.userName} photoUrl={m.photoUrl} size={36} />
+          <span
+            style={{
+              position: "absolute",
+              bottom: 0,
+              right: 0,
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: "#22C55E",
+              border: "2px solid #fff",
+            }}
+          />
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#18181B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {m.userName}
+          </p>
+          <p style={{ fontSize: 11, color: "#A1A1AA", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {m.branchName || "Unassigned"}
+          </p>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid #F4F4F5" }}>
+        <div>
+          <p style={{ fontSize: 10, color: "#A1A1AA", fontWeight: 600 }}>Last check-in</p>
+          <p style={{ fontSize: 12, fontWeight: 700, color: "#18181B", marginTop: 2 }}>{checkinTime || "—"}</p>
+        </div>
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            padding: "3px 10px",
+            borderRadius: 20,
+            fontSize: 10,
+            fontWeight: 700,
+            background: "#F0FDF4",
+            color: "#16A34A",
+            border: "1px solid #BBF7D0",
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22C55E", display: "inline-block" }} />
+          Active
         </span>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <p className="font-semibold text-[#111827] text-sm truncate">{name}</p>
-          {isMocked === "yes" && (
-            <span className="flex items-center gap-1 bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-red-200">
-              <span className="material-symbols-outlined text-[12px]">warning</span>
-              وهمي
+    </div>
+  );
+}
+
+// ─── Activity Feed Row ────────────────────────────────────────────────────────
+function FeedRow({ v, isLast }: { v: any; isLast?: boolean }) {
+  const checkin = new Date(v.checkInAt);
+  const checkout = v.checkOutAt ? new Date(v.checkOutAt) : null;
+  const dur = checkout ? Math.round((checkout.getTime() - checkin.getTime()) / 60000) : null;
+  const open = !v.checkOutAt;
+  const flagged = v.isMocked === "yes";
+
+  const timeAgo = (() => {
+    const diff = Math.round((Date.now() - checkin.getTime()) / 60000);
+    if (diff < 1) return "Just now";
+    if (diff < 60) return `${diff}m ago`;
+    if (diff < 1440) return `${Math.floor(diff / 60)}h ago`;
+    return format(checkin, "MMM d");
+  })();
+
+  return (
+    <div style={{ display: "flex", gap: 12, padding: "10px 0", borderBottom: isLast ? "none" : "1px solid #F4F4F5" }}>
+      <Avatar name={v.managerName} photoUrl={v.managerPhotoUrl} size={32} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: "#18181B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {v.managerName}
+          </p>
+          <span style={{ fontSize: 10, color: "#A1A1AA", fontWeight: 500, flexShrink: 0 }}>{timeAgo}</span>
+        </div>
+        <p style={{ fontSize: 11, color: "#71717A", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {v.branchName}{dur ? ` · ${dur}m` : ""}
+        </p>
+        <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
+          {open && (
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#EFF6FF", color: "#2563EB", border: "1px solid #BFDBFE" }}>
+              In Progress
+            </span>
+          )}
+          {!open && !flagged && (
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#F0FDF4", color: "#16A34A", border: "1px solid #BBF7D0" }}>
+              Check-out
+            </span>
+          )}
+          {flagged && (
+            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 20, background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
+              Spoofed
             </span>
           )}
         </div>
-        <p className="text-[#9CA3AF] text-xs mt-0.5">{manager}</p>
-      </div>
-      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-        <span className="text-xs text-[#9CA3AF] font-mono">{time}</span>
-        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isActive ? "bg-[#EDE9FE] text-[#7C3AED]" : "bg-[#ECFDF5] text-[#059669]"}`}>
-          {isActive ? "نشط" : "منتهى"}
-        </span>
       </div>
     </div>
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
-export default function AdminDashboard() {
-  const [, navigate] = useLocation();
-  const { data: stats, isLoading } = trpc.visit.stats.useQuery();
-  const { data: recentVisits = [], isLoading: recentLoading } = trpc.visit.recentVisits.useQuery({ limit: 5 });
-  const { data: liveLocations = [], isLoading: managersLoading } = trpc.manager.getLiveLocations.useQuery();
-  const { data: activeVisits = [] } = trpc.visit.activeVisits.useQuery();
+// ─── Branch Progress Row ──────────────────────────────────────────────────────
+function BranchProgressRow({ name, count, total }: { name: string; count: number; total: number }) {
+  const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+        <p style={{ fontSize: 12, fontWeight: 600, color: "#18181B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%" }}>
+          {name}
+        </p>
+        <p style={{ fontSize: 11, fontWeight: 700, color: "#71717A", flexShrink: 0 }}>{count} visits</p>
+      </div>
+      <div style={{ height: 5, borderRadius: 99, background: "#F4F4F5", overflow: "hidden" }}>
+        <div
+          style={{
+            height: "100%",
+            width: `${pct}%`,
+            borderRadius: 99,
+            background: "#18181B",
+            transition: "width 0.6s ease",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
-  const totalBranches      = (stats as any)?.totalBranches ?? 0;
-  const totalManagers      = (stats as any)?.totalManagers ?? 0;
-  const todayVisits        = (stats as any)?.todayVisits   ?? 0;
-  const mockedVisitsToday  = (stats as any)?.mockedVisitsToday ?? 0;
-  const completionRate     = Math.min(Math.round((todayVisits / Math.max(totalBranches, 1)) * 100), 100);
+// ─── Weekly Bar Chart ─────────────────────────────────────────────────────────
+function WeeklyBarChart({ visits }: { visits: any[] }) {
   const now = new Date();
-
-  // جيب الفرع الحالي لكل مدير من activeVisits (الزيارات المفتوحة فعلاً)
-  const managerCurrentBranch: Record<number, { branch: string; status: "checked_in" }> = {};
-  (activeVisits as any[]).forEach((v: any) => {
-    managerCurrentBranch[v.managerId] = { branch: v.branchName, status: "checked_in" };
+  // Saturday as start of Egyptian work week
+  const weekStart = startOfWeek(now, { weekStartsOn: 6 });
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const date = addDays(weekStart, i);
+    return {
+      label: format(date, "EEE"),
+      dateStr: format(date, "yyyy-MM-dd"),
+      isToday: format(date, "yyyy-MM-dd") === format(now, "yyyy-MM-dd"),
+      isFuture: date > now,
+    };
   });
 
+  const countByDay: Record<string, number> = {};
+  visits.forEach((v) => {
+    const d = format(new Date(v.checkInAt), "yyyy-MM-dd");
+    countByDay[d] = (countByDay[d] || 0) + 1;
+  });
+
+  const maxCount = Math.max(...days.map((d) => countByDay[d.dateStr] || 0), 1);
+
   return (
-    <div className="min-h-screen pb-24 md:pb-8" style={{ background: "#F8F7FF" }}>
-
-      {/* ── Top Bar (Mobile) ──────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-white border-b border-[#EDE9FE] md:hidden">
-        <div className="flex items-center justify-between px-4 h-14">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#6D28D9] to-[#A78BFA] flex items-center justify-center">
-              <span className="material-symbols-outlined text-white text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                monitoring
-              </span>
-            </div>
-            <div>
-              <h1 className="font-bold text-[15px] text-[#7C3AED] tracking-tight leading-none" style={{ fontFamily: "'Cairo', sans-serif" }}>
-                Branch Tracker
-              </h1>
-              <p className="text-[10px] text-[#9CA3AF] leading-none mt-0.5">
-                {format(now, "EEE d MMM", { locale: ar })}
-              </p>
-            </div>
-          </div>
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#A78BFA] flex items-center justify-center text-white font-bold text-sm">
-            A
-          </div>
-        </div>
-      </header>
-
-      <main className="px-4 md:px-8 pt-6 max-w-7xl mx-auto space-y-6">
-
-        {/* ── Greeting ──────────────────────────────────────────────────────── */}
-        <div className="hidden md:block">
-          <h2 className="text-2xl font-bold text-[#111827]" style={{ fontFamily: "'Cairo', sans-serif" }}>
-            مرحباً، الأدمن! 👋
-          </h2>
-          <p className="text-[#6B7280] text-sm mt-1">{format(now, "EEEE، d MMMM yyyy", { locale: ar })}</p>
-        </div>
-
-        {/* ── KPI Cards ─────────────────────────────────────────────────────── */}
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-          {/* الفروع */}
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 80 }}>
+      {days.map((day) => {
+        const count = countByDay[day.dateStr] || 0;
+        const heightPct = day.isFuture ? 0 : Math.max(count / maxCount, count > 0 ? 0.08 : 0);
+        return (
           <div
-            className="bg-gradient-to-br from-[#7C3AED] to-[#A78BFA] rounded-2xl p-5 text-white cursor-pointer hover:shadow-lg hover:shadow-[#A78BFA]/30 transition-all duration-200 col-span-2 md:col-span-1"
-            onClick={() => navigate("/branches")}
+            key={day.dateStr}
+            style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}
           >
-            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center mb-4">
-              <span className="material-symbols-outlined text-white text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>location_city</span>
+            <p style={{ fontSize: 10, fontWeight: 700, color: day.isFuture ? "#E4E4E7" : "#71717A" }}>
+              {count > 0 ? count : ""}
+            </p>
+            <div style={{ width: "100%", height: 52, display: "flex", alignItems: "flex-end" }}>
+              <div
+                style={{
+                  width: "100%",
+                  height: `${heightPct * 100}%`,
+                  minHeight: count > 0 ? 4 : 0,
+                  borderRadius: "6px 6px 4px 4px",
+                  background: day.isToday ? "#18181B" : day.isFuture ? "#F4F4F5" : "#D4D4D8",
+                  transition: "height 0.4s ease",
+                }}
+              />
             </div>
-            <p className="text-white/70 text-xs font-semibold uppercase tracking-widest mb-1">الفروع</p>
-            <p className="font-bold text-4xl leading-none font-mono">{isLoading ? "—" : totalBranches}</p>
-            <p className="text-white/60 text-xs mt-2">إجمالي الفروع المسجلة</p>
+            <p
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                color: day.isToday ? "#18181B" : "#A1A1AA",
+                textAlign: "center",
+              }}
+            >
+              {day.label}
+            </p>
           </div>
+        );
+      })}
+    </div>
+  );
+}
 
-          {/* المديرين */}
-          <div
-            className="bg-white rounded-2xl p-5 border border-[#EDE9FE] cursor-pointer hover:border-[#A78BFA] hover:shadow-md transition-all duration-200"
-            onClick={() => navigate("/managers")}
-          >
-            <div className="w-9 h-9 bg-[#EDE9FE] rounded-xl flex items-center justify-center mb-4">
-              <span className="material-symbols-outlined text-[#7C3AED] text-[20px]">manage_accounts</span>
-            </div>
-            <p className="text-[#9CA3AF] text-xs font-semibold uppercase tracking-widest mb-1">المديرين</p>
-            <p className="font-bold text-3xl text-[#111827] leading-none font-mono">{isLoading ? "—" : totalManagers}</p>
-            <p className="text-[#9CA3AF] text-xs mt-2">نشط الآن</p>
+// ─── Empty State ──────────────────────────────────────────────────────────────
+function Empty({ icon, text }: { icon: string; text: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "28px 0" }}>
+      <span className="material-symbols-outlined" style={{ fontSize: 28, color: "#D4D4D8", fontVariationSettings: "'FILL' 1" }}>
+        {icon}
+      </span>
+      <p style={{ fontSize: 12, color: "#A1A1AA", fontWeight: 500 }}>{text}</p>
+    </div>
+  );
+}
+
+// ─── Main Dashboard ───────────────────────────────────────────────────────────
+export default function AdminDashboard() {
+  const { user } = useAuth();
+  const [, setLocation] = useLocation();
+  const now = new Date();
+  const todayStr = format(now, "yyyy-MM-dd");
+
+  // ── week range for weekly chart (Saturday → Friday)
+  const weekStart = startOfWeek(now, { weekStartsOn: 6 });
+  const weekStartStr = format(weekStart, "yyyy-MM-dd");
+  const weekEndStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
+
+  const { data: branches = [], isLoading: lb } = trpc.branch.list.useQuery();
+  const { data: managers = [], isLoading: lm } = trpc.manager.list.useQuery();
+  const { data: visitsData, isLoading: lv } = trpc.visit.adminList.useQuery(
+    { startDate: todayStr, endDate: todayStr, limit: 50, offset: 0 },
+    { refetchInterval: 30000 }
+  );
+  const { data: liveLocations = [], isLoading: ll } = trpc.manager.getLiveLocations.useQuery(
+    undefined,
+    { refetchInterval: 30000 }
+  );
+  const { data: weekVisitsData, isLoading: lw } = trpc.visit.adminList.useQuery(
+    { startDate: weekStartStr, endDate: weekEndStr, limit: 500, offset: 0 },
+    { refetchInterval: 60000 }
+  );
+
+  const visits = (visitsData?.items ?? []) as any[];
+  const weekVisits = (weekVisitsData?.items ?? []) as any[];
+  const mockedCount = visits.filter((v: any) => v.isMocked === "yes").length;
+  const activeManagers = liveLocations.filter((m: any) => m.location !== null);
+
+  // branch visit distribution
+  const branchVisitMap: Record<string, { name: string; count: number }> = {};
+  visits.forEach((v: any) => {
+    if (!branchVisitMap[v.branchId]) branchVisitMap[v.branchId] = { name: v.branchName, count: 0 };
+    branchVisitMap[v.branchId].count++;
+  });
+  const branchVisitList = Object.values(branchVisitMap).sort((a, b) => b.count - a.count);
+  const visitedBranchIds = new Set(visits.map((v: any) => v.branchId));
+  const unvisitedBranches = branches.filter((b: any) => !visitedBranchIds.has(b.id));
+
+  const btnBase: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 14px",
+    borderRadius: 10,
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    border: "none",
+    fontFamily: "inherit",
+    transition: "opacity .15s",
+  };
+
+  return (
+    <>
+      <style>{`
+        @keyframes shimmer {
+          0% { background-position: 200% 0 }
+          100% { background-position: -200% 0 }
+        }
+        * { box-sizing: border-box; }
+      `}</style>
+
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", fontFamily: "Inter, -apple-system, sans-serif" }}>
+
+        {/* ── Page Header ─────────────────────────────────────────────────── */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "16px 20px",
+            borderBottom: "1px solid #F4F4F5",
+            flexShrink: 0,
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          <div>
+            <h1 style={{ fontSize: 20, fontWeight: 800, color: "#18181B", margin: 0 }}>Branch Visit Overview</h1>
+            <p style={{ fontSize: 12, color: "#A1A1AA", fontWeight: 500, margin: "4px 0 0" }}>
+              {format(now, "EEEE, MMMM d yyyy")}&nbsp;·&nbsp;
+              {ll ? "—" : `${activeManagers.length} manager${activeManagers.length !== 1 ? "s" : ""} active`}
+            </p>
           </div>
-
-          {/* زيارات اليوم */}
-          <div
-            className="bg-white rounded-2xl p-5 border border-[#D1FAE5] cursor-pointer hover:border-[#6EE7B7] hover:shadow-md transition-all duration-200"
-            onClick={() => navigate("/reports")}
-          >
-            <div className="w-9 h-9 bg-[#ECFDF5] rounded-xl flex items-center justify-center mb-4">
-              <span className="material-symbols-outlined text-[#059669] text-[20px]">task_alt</span>
-            </div>
-            <p className="text-[#9CA3AF] text-xs font-semibold uppercase tracking-widest mb-1">زيارات اليوم</p>
-            <p className="font-bold text-3xl text-[#111827] leading-none font-mono">{isLoading ? "—" : todayVisits}</p>
-            <div className="mt-3 h-1.5 bg-[#D1FAE5] rounded-full overflow-hidden">
-              <div className="h-full bg-[#059669] rounded-full transition-all duration-700" style={{ width: `${completionRate}%` }} />
-            </div>
-          </div>
-
-          {/* معدل الإنجاز */}
-          <div className="bg-white rounded-2xl p-5 border border-[#EDE9FE] flex flex-col items-center justify-center">
-            <p className="text-[#9CA3AF] text-xs font-semibold uppercase tracking-widest mb-3 self-start">معدل الإنجاز</p>
-            <div className="relative w-20 h-20">
-              <svg viewBox="0 0 88 88" className="w-20 h-20" aria-hidden="true">
-                <circle cx="44" cy="44" r="36" fill="none" stroke="#EDE9FE" strokeWidth="8" />
-                <circle
-                  cx="44" cy="44" r="36" fill="none"
-                  stroke="#7C3AED" strokeWidth="8"
-                  strokeDasharray={`${(completionRate / 100) * (2 * Math.PI * 36)} ${2 * Math.PI * 36}`}
-                  strokeLinecap="round"
-                  transform="rotate(-90 44 44)"
-                  style={{ transition: "stroke-dasharray 0.8s cubic-bezier(0.34,1.56,0.64,1)" }}
-                />
-                <text x="44" y="49" textAnchor="middle" fill="#7C3AED" fontSize="15" fontFamily="'Fira Code', monospace" fontWeight="700">
-                  {completionRate}
-                </text>
-              </svg>
-            </div>
-            <p className="text-[#9CA3AF] text-xs mt-2">% من الهدف اليومي</p>
-          </div>
-
-          {/* تنبيه المواقع الوهمية (يظهر فقط لو فيه داتا) */}
-          <div
-            className={`rounded-2xl p-5 border transition-all duration-200 cursor-pointer ${
-              mockedVisitsToday > 0 
-                ? "bg-red-50 border-red-200 hover:border-red-400 shadow-sm" 
-                : "bg-white border-[#EDE9FE] opacity-60"
-            } col-span-2 md:col-span-1`}
-            onClick={() => navigate("/reports")}
-          >
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-4 ${
-              mockedVisitsToday > 0 ? "bg-red-100" : "bg-gray-100"
-            }`}>
-              <span className={`material-symbols-outlined text-[20px] ${
-                mockedVisitsToday > 0 ? "text-red-600" : "text-gray-400"
-              }`} style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>
-            </div>
-            <p className="text-[#9CA3AF] text-xs font-semibold uppercase tracking-widest mb-1">مواقع وهمية</p>
-            <p className={`font-bold text-3xl leading-none font-mono ${
-              mockedVisitsToday > 0 ? "text-red-600" : "text-[#111827]"
-            }`}>{isLoading ? "—" : mockedVisitsToday}</p>
-            <p className="text-[#9CA3AF] text-xs mt-2">{mockedVisitsToday > 0 ? "زيارات مشبوهة اليوم!" : "لا توجد بلاغات"}</p>
-          </div>
-        </section>
-
-        {/* ── كروت المديرين ─────────────────────────────────────────────────── */}
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="font-bold text-[#111827] text-base" style={{ fontFamily: "'Cairo', sans-serif" }}>المديرين الميدانيين</h2>
-              <p className="text-[#9CA3AF] text-xs mt-0.5">الحالة اللحظية لكل مدير</p>
-            </div>
-            <button onClick={() => navigate("/live-map")} className="flex items-center gap-1.5 text-[#7C3AED] text-xs font-bold hover:underline cursor-pointer">
-              <span className="material-symbols-outlined text-[16px]">map</span>
-              الخريطة المباشرة
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={() => setLocation("/reports")}
+              style={{ ...btnBase, background: "#F4F4F5", color: "#71717A", border: "1px solid #E4E4E7" }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 14 }}>download</span>
+              Export
+            </button>
+            <button
+              onClick={() => setLocation("/live-map")}
+              style={{ ...btnBase, background: "#18181B", color: "#fff" }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 14, fontVariationSettings: "'FILL' 1" }}>sensors</span>
+              Live Tracking
             </button>
           </div>
+        </div>
 
-          {managersLoading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 className="w-6 h-6 animate-spin text-[#7C3AED]" />
-            </div>
-          ) : (liveLocations as any[]).length === 0 ? (
-            <div className="text-center py-10 text-[#9CA3AF] text-sm bg-white rounded-2xl border border-[#EDE9FE]">
-              لا يوجد مديرون مسجلون بعد
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {(liveLocations as any[]).map((m: any) => {
-                const current = managerCurrentBranch[m.id];
-                return (
-                  <ManagerCard
-                    key={m.id}
-                    name={m.userName}
-                    photoUrl={m.photoUrl}
-                    branchName={current?.branch ?? null}
-                    status={current?.status ?? null}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </section>
+        {/* ── Scrollable Body ──────────────────────────────────────────────── */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px", scrollbarWidth: "none" as const }}>
 
-        {/* ── النشاط الأخير + Quick Actions ─────────────────────────────────── */}
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {/* ── Zone 1: KPI Strip ─────────────────────────────────────────── */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, 1fr)",
+              gap: 12,
+              marginBottom: 20,
+            }}
+            className="kpi-grid"
+          >
+            <KpiCard
+              label="Total Branches"
+              value={lb ? "—" : branches.length}
+              icon="account_tree"
+              iconColor="#3B82F6"
+              loading={lb}
+            />
+            <KpiCard
+              label="Total Managers"
+              value={lm ? "—" : managers.length}
+              icon="badge"
+              iconColor="#16A34A"
+              loading={lm}
+            />
+            <KpiCard
+              label="Today's Visits"
+              value={lv ? "—" : visits.length}
+              icon="map"
+              iconColor="#71717A"
+              loading={lv}
+            />
+            <KpiCard
+              label="Spoofed Today"
+              value={lv ? "—" : mockedCount}
+              icon="warning"
+              iconColor="#DC2626"
+              valueColor={mockedCount > 0 ? "#DC2626" : "#18181B"}
+              loading={lv}
+            />
+          </div>
 
-          {/* النشاط الأخير */}
-          <div className="bg-white rounded-2xl p-5 border border-[#EDE9FE] md:col-span-2">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-bold text-[#111827] text-base" style={{ fontFamily: "'Cairo', sans-serif" }}>النشاط الأخير</h2>
-              <button onClick={() => navigate("/reports")} className="text-[#7C3AED] text-xs font-bold hover:underline cursor-pointer">
-                عرض الكل
-              </button>
-            </div>
-            {recentLoading ? (
-              <div className="flex justify-center py-6">
-                <Loader2 className="w-5 h-5 animate-spin text-[#7C3AED]" />
-              </div>
-            ) : (recentVisits as any[]).length === 0 ? (
-              <div className="text-center py-8 text-[#9CA3AF] text-sm">لا توجد زيارات بعد</div>
-            ) : (
-              (recentVisits as any[]).map((v: any) => (
-                <VisitRow
-                  key={v.id}
-                  name={v.branchName}
-                  time={format(new Date(v.checkInAt), "hh:mm a", { locale: ar })}
-                  status={v.status}
-                  manager={v.managerName ?? "—"}
-                  isMocked={v.isMocked}
+          {/* ── Zone 2: Two-column middle ─────────────────────────────────── */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "3fr 2fr",
+              gap: 16,
+              marginBottom: 20,
+              alignItems: "start",
+            }}
+            className="main-grid"
+          >
+
+            {/* Left column */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+
+              {/* Active Managers now */}
+              <div>
+                <SectionHeader
+                  title="Active Managers Now"
+                  badge={
+                    !ll && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "#F0FDF4", color: "#16A34A", border: "1px solid #BBF7D0" }}>
+                        {activeManagers.length} online
+                      </span>
+                    )
+                  }
+                  action={
+                    <button
+                      onClick={() => setLocation("/managers")}
+                      style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: "#A1A1AA", background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "inherit" }}
+                    >
+                      View all
+                      <span className="material-symbols-outlined" style={{ fontSize: 13 }}>arrow_forward</span>
+                    </button>
+                  }
                 />
-              ))
-            )}
+                {ll ? (
+                  <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, scrollbarWidth: "none" as const }}>
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} style={{ minWidth: 200, background: "#fff", border: "1px solid #E4E4E7", borderRadius: 14, padding: 16, flexShrink: 0 }}>
+                        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+                          <Skeleton w={36} h={36} r={18} />
+                          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                            <Skeleton h={13} r={4} />
+                            <Skeleton w="60%" h={11} r={4} />
+                          </div>
+                        </div>
+                        <Skeleton h={5} r={99} />
+                      </div>
+                    ))}
+                  </div>
+                ) : activeManagers.length === 0 ? (
+                  <Panel>
+                    <Empty icon="person_off" text="No managers are active right now" />
+                  </Panel>
+                ) : (
+                  <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, scrollbarWidth: "none" as const }}>
+                    {activeManagers.map((m: any) => <ActiveManagerCard key={m.id} m={m} />)}
+                  </div>
+                )}
+              </div>
+
+              {/* Activity Feed */}
+              <Panel>
+                <div style={{ padding: "14px 16px", borderBottom: "1px solid #F4F4F5", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#18181B" }}>Activity Feed</p>
+                  {!lv && (
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "#F4F4F5", color: "#71717A" }}>
+                      {visits.length} today
+                    </span>
+                  )}
+                </div>
+                <div style={{ padding: "0 16px", maxHeight: 360, overflowY: "auto", scrollbarWidth: "none" as const }}>
+                  {lv ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <div key={i} style={{ display: "flex", gap: 12, padding: "12px 0", borderBottom: "1px solid #F4F4F5" }}>
+                        <Skeleton w={32} h={32} r={16} />
+                        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                          <Skeleton h={12} r={4} />
+                          <Skeleton w="55%" h={11} r={4} />
+                          <Skeleton w="30%" h={18} r={9} />
+                        </div>
+                      </div>
+                    ))
+                  ) : visits.length === 0 ? (
+                    <Empty icon="event_busy" text="No visits recorded today" />
+                  ) : (
+                    visits.slice(0, 10).map((v: any, idx: number) => (
+                      <FeedRow key={v.id} v={v} isLast={idx === Math.min(visits.length, 10) - 1} />
+                    ))
+                  )}
+                </div>
+              </Panel>
+            </div>
+
+            {/* Right column */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+
+              {/* Branch Visit Distribution */}
+              <Panel>
+                <div style={{ padding: "14px 16px", borderBottom: "1px solid #F4F4F5" }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#18181B" }}>Visits by Branch</p>
+                </div>
+                <div style={{ padding: "14px 16px", maxHeight: 300, overflowY: "auto", scrollbarWidth: "none" as const }}>
+                  {lv ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} style={{ marginBottom: 16 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                          <Skeleton w="60%" h={12} r={4} />
+                          <Skeleton w={40} h={12} r={4} />
+                        </div>
+                        <Skeleton h={5} r={99} />
+                      </div>
+                    ))
+                  ) : branchVisitList.length === 0 ? (
+                    <Empty icon="bar_chart" text="No visits to display" />
+                  ) : (
+                    branchVisitList.map((b) => (
+                      <BranchProgressRow key={b.name} name={b.name} count={b.count} total={visits.length} />
+                    ))
+                  )}
+                </div>
+
+                {/* Unvisited branches */}
+                {!lv && unvisitedBranches.length > 0 && (
+                  <>
+                    <div style={{ borderTop: "1px solid #F4F4F5", padding: "12px 16px" }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: "#A1A1AA", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 10 }}>
+                        Not Visited Today
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {unvisitedBranches.slice(0, 6).map((b: any) => (
+                          <div
+                            key={b.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              padding: "7px 10px",
+                              borderRadius: 10,
+                              background: "#FAFAFA",
+                              border: "1px solid #F4F4F5",
+                            }}
+                          >
+                            <p style={{ fontSize: 12, fontWeight: 600, color: "#71717A", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%" }}>
+                              {b.name}
+                            </p>
+                            <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 20, background: "#F4F4F5", color: "#A1A1AA", flexShrink: 0 }}>
+                              Not visited
+                            </span>
+                          </div>
+                        ))}
+                        {unvisitedBranches.length > 6 && (
+                          <p style={{ fontSize: 11, color: "#A1A1AA", textAlign: "center", paddingTop: 4 }}>
+                            +{unvisitedBranches.length - 6} more
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </Panel>
+            </div>
           </div>
 
-          {/* Quick Actions */}
-          <div className="flex flex-col gap-3">
-            {[
-              { icon: "map",        label: "الخريطة المباشرة", sub: "تتبع فوري للمديرين",     path: "/live-map",  color: "#7C3AED", bg: "#EDE9FE" },
-              { icon: "assignment", label: "التقارير",          sub: "تحليلات شاملة وتصدير",   path: "/reports",   color: "#059669", bg: "#ECFDF5" },
-              { icon: "group",      label: "المستخدمون",        sub: "إدارة الصلاحيات",        path: "/users",     color: "#D97706", bg: "#FEF3C7" },
-            ].map(({ icon, label, sub, path, color, bg }) => (
-              <button key={path}
-                onClick={() => navigate(path)}
-                className="bg-white rounded-2xl p-4 flex items-center gap-3 text-right border border-[#F3F4F6] hover:border-[#EDE9FE] hover:shadow-md transition-all duration-200 cursor-pointer w-full group">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: bg }}>
-                  <span className="material-symbols-outlined text-[20px] group-hover:scale-110 transition-transform" style={{ color, fontVariationSettings: "'FILL' 1" }}>
-                    {icon}
-                  </span>
+          {/* ── Zone 3: Weekly Summary full-width ────────────────────────── */}
+          <Panel>
+            <div style={{ padding: "14px 20px", borderBottom: "1px solid #F4F4F5", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "#18181B" }}>This Week's Visits</p>
+                <p style={{ fontSize: 11, color: "#A1A1AA", fontWeight: 500, marginTop: 2 }}>
+                  {format(weekStart, "MMM d")} — {format(addDays(weekStart, 6), "MMM d, yyyy")}
+                </p>
+              </div>
+              {!lw && (
+                <p style={{ fontSize: 22, fontWeight: 800, color: "#18181B" }}>
+                  {weekVisits.length}
+                  <span style={{ fontSize: 12, fontWeight: 500, color: "#A1A1AA", marginLeft: 6 }}>visits</span>
+                </p>
+              )}
+            </div>
+            <div style={{ padding: "20px 24px" }}>
+              {lw ? (
+                <div style={{ display: "flex", gap: 8, alignItems: "flex-end", height: 80 }}>
+                  {Array.from({ length: 7 }).map((_, i) => (
+                    <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <Skeleton h={Math.random() * 40 + 10} r={4} />
+                      <Skeleton h={10} r={3} />
+                    </div>
+                  ))}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-bold text-sm text-[#111827]" style={{ fontFamily: "'Cairo', sans-serif" }}>{label}</p>
-                  <p className="text-xs text-[#9CA3AF] mt-0.5">{sub}</p>
-                </div>
-                <span className="material-symbols-outlined text-[18px] text-[#D1D5DB] group-hover:text-[#7C3AED] transition-colors flex-shrink-0">chevron_left</span>
-              </button>
-            ))}
-          </div>
-        </section>
+              ) : (
+                <WeeklyBarChart visits={weekVisits} />
+              )}
+            </div>
+          </Panel>
 
-      </main>
+        </div>
+      </div>
 
-      {/* ── FAB ──────────────────────────────────────────────────────────────── */}
-      <button
-        onClick={() => navigate("/branches")}
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 w-14 h-14 rounded-2xl flex items-center justify-center z-40 bg-gradient-to-br from-[#6D28D9] to-[#A78BFA] shadow-lg shadow-[#A78BFA]/40 hover:scale-110 active:scale-90 transition-transform duration-200 cursor-pointer"
-        aria-label="إضافة فرع">
-        <span className="material-symbols-outlined text-white text-[28px]" style={{ fontVariationSettings: "'FILL' 1" }}>add</span>
-      </button>
-    </div>
+      {/* ── Responsive breakpoints ────────────────────────────────────────── */}
+      <style>{`
+        @media (min-width: 900px) {
+          .kpi-grid { grid-template-columns: repeat(4, 1fr) !important; }
+        }
+        @media (max-width: 700px) {
+          .main-grid { grid-template-columns: 1fr !important; }
+        }
+      `}</style>
+    </>
   );
 }

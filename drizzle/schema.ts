@@ -38,6 +38,7 @@ export const managers = mysqlTable("managers", {
   userId: int("userId").notNull(),
   employeeCode: varchar("employeeCode", { length: 64 }),
   phone: varchar("phone", { length: 32 }),
+  photoUrl: varchar("photoUrl", { length: 512 }),
   isActive: mysqlEnum("isActive", ["yes", "no"]).default("yes").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

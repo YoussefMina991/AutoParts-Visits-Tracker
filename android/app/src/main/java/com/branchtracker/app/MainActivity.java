@@ -19,10 +19,9 @@ import com.getcapacitor.BridgeActivity;
  *
  * الحل:
  *   onCreate → startForegroundService(GeolocationServiceWrapper)
- *   مع حماية START_STICKY في الـ Wrapper نفسه لو الـ OS أوقفه.
+ *   onResume  → safety net لو الـ OS أوقف الـ service
  *
- *   onResume → نفس الشيء كـ safety net لو الـ OS أوقف الـ service
- *   أثناء الاستخدام (بعض الأجهزة الصينية بتوقف الـ services وقت الضغط).
+ * ملاحظة: onResume يجب أن يكون public لأن BridgeActivity تعرّفه public
  */
 public class MainActivity extends BridgeActivity {
 
@@ -35,9 +34,9 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
-        // Safety net: لو الـ OS أوقف الـ wrapper أثناء الخلفية → نشغله تاني لما يرجع المستخدم
+        // Safety net: لو الـ OS أوقف الـ wrapper → نشغله لما يرجع المستخدم
         if (!ServiceStateHolder.isGeolocationServiceRunning) {
             startGeolocationWrapper("onResume");
         }
@@ -45,7 +44,7 @@ public class MainActivity extends BridgeActivity {
 
     /**
      * يشغّل GeolocationServiceWrapper بالطريقة الصحيحة حسب إصدار Android.
-     * مؤمن ضد الاستثناءات — لو فشل، يعيد المحاولة عبر WorkManager.
+     * Fallback إلى WorkManager لو حصل استثناء على بعض الأجهزة المقيدة.
      */
     private void startGeolocationWrapper(String trigger) {
         try {
@@ -57,8 +56,7 @@ public class MainActivity extends BridgeActivity {
             }
             Log.i(TAG, "GeolocationServiceWrapper started from " + trigger);
         } catch (Exception e) {
-            // Fallback: WorkManager موثوق أكثر لو حصل استثناء (بعض الأجهزة المقيدة)
-            Log.w(TAG, "Direct start failed from " + trigger + " — falling back to WorkManager: " + e.getMessage());
+            Log.w(TAG, "Direct start failed (" + trigger + ") → WorkManager fallback: " + e.getMessage());
             BootStartWorker.enqueue(getApplicationContext());
         }
     }

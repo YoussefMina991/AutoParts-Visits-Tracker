@@ -1,20 +1,48 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Link, useLocation } from "wouter";
 
-const adminMenuItems = [
-  { icon: "home", label: "الرئيسية", path: "/" },
-  { icon: "location_city", label: "الفروع", path: "/branches" },
-  { icon: "map", label: "الخريطة", path: "/live-map" },
-  { icon: "manage_accounts", label: "المديرين", path: "/managers" },
-  { icon: "person", label: "المستخدمين", path: "/users" },
-  { icon: "assignment", label: "التقارير", path: "/reports" },
+// ─── Design Tokens (single source of truth) ──────────────────────────────────
+// BG:        #F4F4F5  (outer shell)
+// Surface:   #FFFFFF  (white card)
+// Border:    #E4E4E7  (all borders)
+// Text-1:    #18181B  (headings)
+// Text-2:    #71717A  (secondary)
+// Text-3:    #A1A1AA  (placeholder / muted)
+// Active:    #18181B  (selected nav item)
+// Accent:    #18181B  (primary button)
+// Radius-sm: 12px     (buttons, inputs)
+// Radius-md: 16px     (cards)
+// Radius-lg: 24px     (main card)
+
+const adminMenuGroups = [
+  {
+    label: "Overview",
+    items: [
+      { icon: "dashboard",    label: "Dashboard",  path: "/" },
+      { icon: "sensors",      label: "Live Map",   path: "/live-map" },
+      { icon: "assessment",   label: "Reports",    path: "/reports" },
+    ],
+  },
+  {
+    label: "Manage",
+    items: [
+      { icon: "account_tree", label: "Branches",   path: "/branches" },
+      { icon: "badge",        label: "Managers",   path: "/managers" },
+      { icon: "group",        label: "Users",      path: "/users" },
+    ],
+  },
 ];
 
-const managerMenuItems = [
-  { icon: "home", label: "الرئيسية", path: "/" },
-  { icon: "location_on", label: "حضور", path: "/check-in" },
-  { icon: "history", label: "السجل", path: "/history" },
-  { icon: "cloud_sync", label: "المزامنة", path: "/sync" },
+const managerMenuGroups = [
+  {
+    label: "Menu",
+    items: [
+      { icon: "dashboard",   label: "Home",    path: "/" },
+      { icon: "location_on", label: "Check In", path: "/check-in" },
+      { icon: "history",     label: "History",  path: "/history" },
+      { icon: "cloud_sync",  label: "Sync",     path: "/sync" },
+    ],
+  },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -22,155 +50,192 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [location] = useLocation();
 
   const isAdmin = user?.role === "admin";
-  const menuItems = isAdmin ? adminMenuItems : managerMenuItems;
+  const menuGroups = isAdmin ? adminMenuGroups : managerMenuGroups;
 
   return (
-    <div className="min-h-screen flex relative overflow-hidden" style={{ background: "#F8F7FF" }} dir="rtl">
-
-      {/* ── Desktop Sidebar ─────────────────────────────────────────────────── */}
-      <aside className="hidden md:flex flex-col w-64 h-screen sticky top-0 border-l border-[#EDE9FE] z-40 bg-white">
-
+    <div
+      dir="ltr"
+      style={{ fontFamily: "'Inter', -apple-system, sans-serif", background: "#F4F4F5" }}
+      className="min-h-screen flex overflow-hidden text-[#18181B]"
+    >
+      {/* ── Sidebar ── */}
+      <aside
+        className="hidden md:flex flex-col w-[220px] h-screen sticky top-0 z-40 px-3 pt-6 pb-5"
+        style={{ background: "#F4F4F5" }}
+      >
         {/* Brand */}
-        <div className="h-16 flex items-center gap-3 px-6 border-b border-[#EDE9FE]">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#6D28D9] to-[#A78BFA] flex items-center justify-center shadow-lg shadow-[#A78BFA]/30">
-            <span className="material-symbols-outlined text-white text-[20px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+        <div className="flex items-center gap-2 px-2 mb-7">
+          <div
+            className="w-7 h-7 rounded-[10px] flex items-center justify-center"
+            style={{ background: "#18181B" }}
+          >
+            <span
+              className="material-symbols-outlined text-white"
+              style={{ fontSize: 15, fontVariationSettings: "'FILL' 1" }}
+            >
               monitoring
             </span>
           </div>
-          <div>
-            <h1 className="font-bold text-[16px] text-[#7C3AED] tracking-tight leading-none" style={{ fontFamily: "'Cairo', sans-serif" }}>
-              Branch Tracker
-            </h1>
-            <p className="text-[10px] text-[#9CA3AF] leading-none mt-1 uppercase tracking-widest font-semibold">
-              {isAdmin ? "Admin Portal" : "Manager Portal"}
-            </p>
-          </div>
+          <span className="font-bold text-[14px] tracking-tight text-[#18181B]">
+            HEITKAMP
+          </span>
         </div>
 
-        {/* User Profile */}
-        <div className="p-4">
-          <div className="flex items-center gap-3 p-3 rounded-2xl bg-[#F8F7FF] border border-[#EDE9FE]">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#A78BFA] flex items-center justify-center text-white font-bold text-sm shadow-md shadow-[#A78BFA]/30 flex-shrink-0">
-              {user?.name?.charAt(0).toUpperCase() ?? "U"}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-sm text-[#111827] truncate" style={{ fontFamily: "'Cairo', sans-serif" }}>
-                {user?.name ?? "المستخدم"}
+        {/* Nav */}
+        <nav className="flex-1 space-y-5 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+          {menuGroups.map((group, idx) => (
+            <div key={idx}>
+              <p className="px-2 text-[10px] font-bold tracking-widest text-[#A1A1AA] uppercase mb-1.5">
+                {group.label}
               </p>
-              <p className="text-[10px] text-[#9CA3AF] truncate font-mono">{user?.username ?? "user"}</p>
+              <div className="space-y-0.5">
+                {group.items.map((item) => {
+                  const active =
+                    location === item.path ||
+                    (item.path === "/" && location === "/dashboard");
+                  return (
+                    <Link key={item.path} href={item.path}>
+                      <a
+                        className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-semibold transition-all cursor-pointer ${
+                          active
+                            ? "bg-[#18181B] text-white"
+                            : "text-[#71717A] hover:text-[#18181B] hover:bg-[#E4E4E7]/60"
+                        }`}
+                      >
+                        <span
+                          className="material-symbols-outlined"
+                          style={{
+                            fontSize: 18,
+                            fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0",
+                          }}
+                        >
+                          {item.icon}
+                        </span>
+                        {item.label}
+                      </a>
+                    </Link>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
-          <p className="px-3 text-[10px] text-[#9CA3AF] uppercase tracking-widest font-bold mb-3">القائمة الرئيسية</p>
-          {menuItems.map((item) => {
-            const isActive = location === item.path;
-            return (
-              <Link key={item.path} href={item.path}>
-                <a className={`flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150 group cursor-pointer ${
-                  isActive
-                    ? "bg-[#EDE9FE] text-[#7C3AED]"
-                    : "text-[#6B7280] hover:bg-[#F8F7FF] hover:text-[#7C3AED]"
-                }`} style={{ fontFamily: "'Cairo', sans-serif" }}>
-                  <span className={`material-symbols-outlined text-[20px] transition-transform duration-150 group-hover:scale-110 ${isActive ? "text-[#7C3AED]" : "text-[#9CA3AF] group-hover:text-[#7C3AED]"}`}
-                    style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>
-                    {item.icon}
-                  </span>
-                  {item.label}
-                  {isActive && <div className="mr-auto w-1.5 h-1.5 rounded-full bg-[#7C3AED]" />}
-                </a>
-              </Link>
-            );
-          })}
+          ))}
         </nav>
 
         {/* Logout */}
-        <div className="p-4 border-t border-[#EDE9FE]">
-          <button onClick={logout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-bold text-[#DC2626] hover:bg-[#FEE2E2] transition-colors cursor-pointer"
-            style={{ fontFamily: "'Cairo', sans-serif" }}>
-            <span className="material-symbols-outlined text-[20px]">logout</span>
-            تسجيل الخروج
+        <div className="pt-3" style={{ borderTop: "1px solid #E4E4E7" }}>
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-semibold text-[#71717A] hover:text-[#EF4444] hover:bg-[#FEF2F2] transition-colors cursor-pointer"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
+              logout
+            </span>
+            Logout
           </button>
         </div>
       </aside>
 
-      {/* ── Main Content ─────────────────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden relative">
-        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-20 md:pb-0">
-          {children}
+      {/* ── White card wrapper ── */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden p-3 pl-0 md:p-4 md:pl-0">
+        <div
+          className="flex-1 bg-white flex flex-col overflow-hidden"
+          style={{
+            borderRadius: 24,
+            border: "1px solid #E4E4E7",
+            boxShadow: "0 1px 16px rgba(0,0,0,0.04)",
+          }}
+        >
+          {/* ── Top bar ── */}
+          <header
+            className="flex items-center justify-between px-5 py-3 shrink-0"
+            style={{ borderBottom: "1px solid #F4F4F5" }}
+          >
+            {/* Search */}
+            <div className="relative flex-1 max-w-[280px]">
+              <span
+                className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#A1A1AA]"
+                style={{ fontSize: 17 }}
+              >
+                search
+              </span>
+              <input
+                type="text"
+                placeholder="Search..."
+                className="w-full h-8 pl-9 pr-3 rounded-full text-[13px] font-medium text-[#18181B] outline-none transition-all placeholder:text-[#A1A1AA]"
+                style={{ background: "#F4F4F5", border: "1px solid transparent" }}
+                onFocus={(e) => {
+                  e.currentTarget.style.border = "1px solid #E4E4E7";
+                  e.currentTarget.style.background = "#fff";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.border = "1px solid transparent";
+                  e.currentTarget.style.background = "#F4F4F5";
+                }}
+              />
+            </div>
+
+            {/* Right */}
+            <div className="flex items-center gap-1.5 ml-3">
+              <button
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[#71717A] hover:bg-[#F4F4F5] transition-colors relative"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: 19 }}>
+                  notifications
+                </span>
+                <span
+                  className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full"
+                  style={{ background: "#EF4444" }}
+                />
+              </button>
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[12px] text-white ml-1"
+                style={{ background: "#18181B" }}
+              >
+                {user?.name?.charAt(0)?.toUpperCase() || "A"}
+              </div>
+            </div>
+          </header>
+
+          {/* Page content */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden pb-16 md:pb-0">
+            {children}
+          </div>
         </div>
       </div>
 
-      {/* ── Mobile Bottom Nav (Admin) ─────────────────────────────────────────── */}
-      {isAdmin ? (
-        <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white border-t border-[#EDE9FE]" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-          <div className="flex justify-around items-center h-16 px-2">
-            {menuItems.map((item) => {
-              const isActive = location === item.path;
-              return (
-                <Link key={item.path} href={item.path}>
-                  <a className={`flex flex-col items-center gap-1 px-3 py-1 rounded-xl transition-all cursor-pointer ${
-                    isActive ? "text-[#7C3AED]" : "text-[#9CA3AF] hover:text-[#7C3AED]"
-                  }`}>
-                    <span className="material-symbols-outlined text-[22px]"
-                      style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}>
-                      {item.icon}
-                    </span>
-                    <span className="text-[9px] font-bold tracking-wider uppercase" style={{ fontFamily: "'Cairo', sans-serif" }}>
-                      {item.label}
-                    </span>
-                    {isActive && <div className="absolute bottom-1 w-1 h-1 rounded-full bg-[#7C3AED]" />}
-                  </a>
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-      ) : (
-        /* ── Mobile Bottom Nav (Manager) — dark HUD style ──────────────── */
-        <nav
-          className="md:hidden fixed bottom-0 left-0 right-0 z-50"
-          style={{
-            background: "oklch(0.22 0.03 256 / 0.85)",
-            borderTop: "1px solid oklch(1 0 0 / 0.1)",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            paddingBottom: "env(safe-area-inset-bottom)",
-          }}
-        >
-          <div className="flex justify-around items-center h-16 px-2">
-            {managerMenuItems.map((item) => {
-              const isActive = location === item.path || (item.path === "/" && location === "/dashboard");
-              return (
-                <Link key={item.path} href={item.path}>
-                  <a className={`relative flex flex-col items-center gap-1 px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                    isActive ? "text-[oklch(0.82_0.15_200)]" : "text-[oklch(0.68_0.03_256)] hover:text-[oklch(0.82_0.15_200)]"
-                  }`}>
-                    {isActive && (
-                      <span
-                        className="absolute -top-0.5 h-0.5 w-6 rounded-full bg-[oklch(0.82_0.15_200)]"
-                        style={{ boxShadow: "0 0 8px oklch(0.82 0.15 200)" }}
-                      />
-                    )}
-                    <span
-                      className="material-symbols-outlined text-[22px]"
-                      style={{ fontVariationSettings: isActive ? "'FILL' 1" : "'FILL' 0" }}
-                    >
-                      {item.icon}
-                    </span>
-                    <span className="text-[9px] font-bold tracking-wider uppercase" style={{ fontFamily: "'Cairo', sans-serif" }}>
-                      {item.label}
-                    </span>
-                  </a>
-                </Link>
-              );
-            })}
-          </div>
-        </nav>
-      )}
+      {/* ── Mobile bottom nav ── */}
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white"
+        style={{ borderTop: "1px solid #E4E4E7" }}
+      >
+        <div className="flex justify-around items-center h-14 px-2">
+          {menuGroups[0].items.map((item) => {
+            const active = location === item.path;
+            return (
+              <Link key={item.path} href={item.path}>
+                <a
+                  className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-all cursor-pointer ${
+                    active ? "text-[#18181B]" : "text-[#A1A1AA]"
+                  }`}
+                >
+                  <span
+                    className="material-symbols-outlined"
+                    style={{
+                      fontSize: 21,
+                      fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0",
+                    }}
+                  >
+                    {item.icon}
+                  </span>
+                  <span className="text-[9px] font-bold tracking-wide uppercase">
+                    {item.label}
+                  </span>
+                </a>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }

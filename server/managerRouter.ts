@@ -3,6 +3,8 @@ import { eq, and, desc, gte, lt } from "drizzle-orm";
 import { router, protectedProcedure, adminProcedure } from "./_core/trpc";
 import { getDb } from "./db";
 import { managers, managerBranches, branches, users, locationLogs, visits } from "../drizzle/schema";
+import fs from "fs";
+import path from "path";
 
 export const managerRouter = router({
   // GET — all managers with their user info (admin)
@@ -15,6 +17,7 @@ export const managerRouter = router({
         userId: managers.userId,
         employeeCode: managers.employeeCode,
         phone: managers.phone,
+        photoUrl: managers.photoUrl,
         isActive: managers.isActive,
         createdAt: managers.createdAt,
         userName: users.name,
@@ -78,6 +81,7 @@ export const managerRouter = router({
         userId: z.number(),
         employeeCode: z.string().optional(),
         phone: z.string().optional(),
+        photoUrl: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -85,6 +89,37 @@ export const managerRouter = router({
       if (!db) throw new Error("Database not available");
       await db.insert(managers).values(input);
       return { success: true };
+    }),
+
+  // POST — رفع صورة المدير (base64) وحفظها لوكال
+  uploadPhoto: adminProcedure
+    .input(z.object({
+      managerId: z.number(),
+      base64: z.string(),       // "data:image/jpeg;base64,..."
+      extension: z.string().max(5).default("jpg"),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+
+      // استخرج الـ base64 data بدون الـ prefix
+      const base64Data = input.base64.replace(/^data:image\/\w+;base64,/, "");
+      const buffer = Buffer.from(base64Data, "base64");
+
+      // حفظ الملف في /uploads/managers/
+      const uploadsDir = path.join(process.cwd(), "uploads", "managers");
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+      const filename = `manager_${input.managerId}_${Date.now()}.${input.extension}`;
+      const filepath = path.join(uploadsDir, filename);
+      fs.writeFileSync(filepath, buffer);
+
+      const photoUrl = `/uploads/managers/${filename}`;
+
+      // حفظ الـ URL في الداتابيز
+      await db.update(managers).set({ photoUrl }).where(eq(managers.id, input.managerId));
+
+      return { photoUrl };
     }),
 
   // GET — admin: get branches currently assigned to a specific manager
@@ -168,6 +203,7 @@ export const managerRouter = router({
         id: managers.id,
         userName: users.name,
         phone: managers.phone,
+        photoUrl: managers.photoUrl,
       })
       .from(managers)
       .innerJoin(users, eq(managers.userId, users.id))

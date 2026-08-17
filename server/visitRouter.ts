@@ -377,6 +377,7 @@ export const visitRouter = router({
         isMocked: visits.isMocked,
         branchName: branches.name, branchId: branches.id, branchCode: branches.code,
         managerName: users.name, managerEmail: users.email,
+        managerPhotoUrl: managers.photoUrl,
       }).from(visits).innerJoin(branches, eq(visits.branchId, branches.id))
         .innerJoin(managers, eq(visits.managerId, managers.id))
         .innerJoin(users, eq(managers.userId, users.id))
