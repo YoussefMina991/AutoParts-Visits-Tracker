@@ -8,21 +8,13 @@ import { getDistanceMeters } from "../shared/utils";
 import { getBranchDistance } from "../shared/gizaBranchDistances";
 import { notifyOwner } from "./_core/notification";
 
-// ── الحد الأدنى للإقامة في الفرع عشان تتحسب المسافة (بالدقايق) ──────────────
-const MIN_VISIT_DURATION_MINUTES = 0;
-
-// ── دالة مساعدة: احسب المسافة من الفرع السابق لو الزيارة السابقة كانت معتبرة ─
-/**
- * بترجع المسافة بالكيلومتر من آخر فرع "معتبر" في نفس اليوم.
- * الزيارة "المعتبرة": status = checked_out + مدتها >= 15 دقيقة.
- * لو مفيش زيارة معتبرة أو المسافة مش في الجدول → ترجع null.
- */
+// ── دالة مساعدة: احسب المسافة من الفرع السابق (أي زيارة مكتملة في نفس اليوم) ─
 async function calcDistanceFromPrevBranch(
   db: Awaited<ReturnType<typeof getDb>>,
   managerId: number,
   currentBranchName: string,
-  referenceTime: Date,    // وقت الدخول للفرع الحالي (أو وقت الـ sync)
-): Promise<number | null> {
+  referenceTime: Date,
+): Promise<{ km: number; prevBranchName: string; timeDiffMin: number } | null> {
   if (!db) return null;
 
   const dayStart = new Date(referenceTime);
@@ -30,9 +22,8 @@ async function calcDistanceFromPrevBranch(
   const dayEnd = new Date(dayStart);
   dayEnd.setDate(dayEnd.getDate() + 1);
 
-  // ── اجيب آخر زيارة "معتبرة" (15 دقيقة+) في نفس اليوم ──────────────────
-  // الزيارة المعتبرة: status = checked_out + مدتها >= 15 دقيقة.
-  const allPrevVisits = await db.select({
+  // جيب آخر زيارة مكتملة في نفس اليوم (أي مدة — مش شرط 15 دقيقة)
+  const prevVisits = await db.select({
     branchName: branches.name,
     checkInAt:  visits.checkInAt,
     checkOutAt: visits.checkOutAt,
@@ -42,23 +33,28 @@ async function calcDistanceFromPrevBranch(
       eq(visits.managerId, managerId),
       eq(visits.status, "checked_out"),
       gte(visits.checkInAt, dayStart),
-      lt(visits.checkInAt, dayEnd),
+      lt(visits.checkInAt, referenceTime), // قبل الزيارة الحالية فقط
     ))
-    .orderBy(desc(visits.checkInAt));
+    .orderBy(desc(visits.checkInAt))
+    .limit(1);
 
-  // ابحث عن أول زيارة سابقة مدتها كانت 15 دقيقة أو أكثر
-  const prevQualified = allPrevVisits.find(v => {
-    if (!v.checkOutAt) return false;
-    const duration = (v.checkOutAt.getTime() - v.checkInAt.getTime()) / 60_000;
-    return duration >= MIN_VISIT_DURATION_MINUTES;
-  });
+  if (!prevVisits[0]?.checkOutAt) return null;
 
-  if (!prevQualified) return null;
+  const prev = prevVisits[0];
+  const km = getBranchDistance(prev.branchName, currentBranchName);
+  if (km === null) return null;
 
-  const prev = prevQualified;
+  const timeDiffMin = (referenceTime.getTime() - prev.checkOutAt.getTime()) / 60_000;
 
-  // ── ابحث عن المسافة في الجدول ─────────────────────────────────────────────
-  return getBranchDistance(prev.branchName, currentBranchName);
+  return { km, prevBranchName: prev.branchName, timeDiffMin };
+}
+
+// ── دالة مساعدة: هل الانتقال مستحيل؟ (Teleportation check) ─────────────────
+function isTeleportation(km: number, timeDiffMin: number): boolean {
+  if (timeDiffMin <= 0) return true; // مستحيل فيزيائياً
+  const speedKmh = km / (timeDiffMin / 60);
+  // أكثر من 80 كم/ساعة في وسط القاهرة والجيزة → مستحيل
+  return speedKmh > 80;
 }
 
 export const visitRouter = router({
@@ -105,14 +101,32 @@ export const visitRouter = router({
         photoUrl = stored.url;
       }
 
-      // ── دمج نقاط الشك من الـ client مع أي فحوصات إضافية على السيرفر ──────
+      // ── دمج نقاط الشك من الـ client مع فحوصات السيرفر ──────────────────────
       const clientScore   = input.suspicionScore ?? 0;
       const clientReasons = input.mockReasons    ?? [];
 
-      // السيرفر بيقرر isMocked لو score >= 50 (بغض النظر عما قاله الـ client)
-      const finalIsMocked = input.isMocked || clientScore >= 50;
-      const finalScore    = clientScore;
-      const finalReasons  = clientReasons.length > 0 ? JSON.stringify(clientReasons) : null;
+      // ── 🚨 فحص Teleportation وقت الـ CheckIn (الأهم) ────────────────────────
+      // السيرفر بيفحص: هل المدير وصل من فرع تاني في وقت مستحيل؟
+      let serverTeleportScore = 0;
+      const serverTeleportReasons: string[] = [];
+
+      const prevResult = await calcDistanceFromPrevBranch(db, manager.id, branch.name, new Date());
+      if (prevResult !== null) {
+        const { km, prevBranchName, timeDiffMin } = prevResult;
+        if (isTeleportation(km, timeDiffMin)) {
+          serverTeleportScore = 100;
+          const speedKmh = Math.round(km / (timeDiffMin / 60));
+          serverTeleportReasons.push(
+            `TELEPORTATION:${prevBranchName}→${branch.name}:${km.toFixed(1)}km:${Math.round(timeDiffMin)}min:${speedKmh}kmh`
+          );
+        }
+      }
+
+      const totalScore    = clientScore + serverTeleportScore;
+      const allReasons    = [...clientReasons, ...serverTeleportReasons];
+      const finalIsMocked = input.isMocked || clientScore >= 50 || serverTeleportScore >= 100;
+      const finalScore    = totalScore;
+      const finalReasons  = allReasons.length > 0 ? JSON.stringify(allReasons) : null;
 
       // ✅ المسافة هتتحسب وقت الـ Check-Out مش هنا — بنحفظ distanceToPrevBranchKm = null دلوقتي
       await db.insert(visits).values({
@@ -173,38 +187,17 @@ export const visitRouter = router({
       const now = new Date();
       const visit = activeVisit[0];
       const durationMin = (now.getTime() - visit.checkInAt.getTime()) / 60_000;
-      const isQualified = durationMin >= MIN_VISIT_DURATION_MINUTES;
 
+      // المسافة بتتحسب دايماً — بغض النظر عن المدة
       let distanceToPrevBranchKm: number | undefined;
       let isTeleporting = false;
 
-      if (isQualified) {
-        const km = await calcDistanceFromPrevBranch(db, manager.id, visit.branchName, visit.checkInAt);
-        if (km !== null) {
-          distanceToPrevBranchKm = km;
-          
-          // ── التحقق من "الانتقال الآني" (Teleportation Check) ──────────────────
-          // لو المسافة كبيرة والوقت قليل جداً بين الفرعين → يبقى موقع وهمي
-          // هنجيب آخر زيارة خلصت قبل الزيارة دي
-          const prevVisit = await db.select({ checkOutAt: visits.checkOutAt })
-            .from(visits)
-            .where(and(
-              eq(visits.managerId, manager.id),
-              eq(visits.status, "checked_out"),
-              lt(visits.checkInAt, visit.checkInAt)
-            ))
-            .orderBy(desc(visits.checkInAt))
-            .limit(1);
-
-          if (prevVisit[0]?.checkOutAt) {
-            const timeDiffHours = (visit.checkInAt.getTime() - prevVisit[0].checkOutAt.getTime()) / 3600000;
-            if (timeDiffHours > 0) {
-              const speed = km / timeDiffHours;
-              if (speed > 150) { // أكثر من 150 كم/ساعة بين فرعين في وسط الزحمة؟ مستحيل.
-                isTeleporting = true;
-              }
-            }
-          }
+      const prevResult = await calcDistanceFromPrevBranch(db, manager.id, visit.branchName, visit.checkInAt);
+      if (prevResult !== null) {
+        distanceToPrevBranchKm = prevResult.km;
+        // إعادة فحص Teleportation هنا كـ double-check (الأساسي بيحصل وقت checkIn)
+        if (isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
+          isTeleporting = true;
         }
       }
 
@@ -228,9 +221,6 @@ export const visitRouter = router({
         skipped: false,
         durationMin: Math.round(durationMin),
         distanceRecorded: distanceToPrevBranchKm ?? null,
-        shortVisitWarning: !isQualified
-          ? `الزيارة كانت ${Math.round(durationMin)} دقيقة فقط — المسافة لم تُسجَّل`
-          : undefined,
       };
     }),
 
@@ -263,51 +253,21 @@ export const visitRouter = router({
 
       const now = new Date();
       const visit = visitResult[0];
-
-      // ── تحقق من مدة الإقامة ─────────────────────────────────────────────────
       const durationMin = (now.getTime() - visit.checkInAt.getTime()) / 60_000;
-      const isQualified = durationMin >= MIN_VISIT_DURATION_MINUTES;
 
-      // ── لو الزيارة معتبرة (15 دقيقة+) احسب المسافة من الفرع السابق ──────────
+      // المسافة والـ Teleportation بيتحسبوا دايماً بغض النظر عن المدة
       let distanceToPrevBranchKm: number | undefined;
       let isTeleporting = false;
 
-      if (isQualified) {
-        const km = await calcDistanceFromPrevBranch(db, manager.id, visit.branchName, visit.checkInAt);
-        if (km !== null) {
-          distanceToPrevBranchKm = km;
-
-          // ── التحقق من "الانتقال الآني" (Teleportation Check) ──────────────────
-          const prevVisit = await db.select({ checkOutAt: visits.checkOutAt })
-            .from(visits)
-            .where(and(
-              eq(visits.managerId, manager.id),
-              eq(visits.status, "checked_out"),
-              lt(visits.checkInAt, visit.checkInAt)
-            ))
-            .orderBy(desc(visits.checkInAt))
-            .limit(1);
-
-          if (prevVisit[0]?.checkOutAt) {
-            const timeDiffMs = visit.checkInAt.getTime() - prevVisit[0].checkOutAt.getTime();
-            const timeDiffHours = timeDiffMs / 3600000;
-            
-            if (timeDiffHours > 0) {
-              const speed = km / timeDiffHours;
-              if (speed > 150) isTeleporting = true;
-            } else if (km > 0.1 && timeDiffMs <= 0) {
-              // لو المسافة حقيقية والزمن صفر (نفس الدقيقة) -> تلاعب
-              isTeleporting = true;
-            }
-          }
+      const prevResult = await calcDistanceFromPrevBranch(db, manager.id, visit.branchName, visit.checkInAt);
+      if (prevResult !== null) {
+        distanceToPrevBranchKm = prevResult.km;
+        if (isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
+          isTeleporting = true;
         }
       }
 
-      // ── اعمل الـ checkout وحدّث المسافة في نفس الوقت ────────────────────────
-      // isMocked:
-      // - لو اكتشفنا teleporting → "yes" (يُلغي حتى لو check-in كان "no")
-      // - لو لم نكتشف → undefined (لا نُعدّل — نحافظ على قرار check-in)
-      // لا نكتب "no" أبداً هنا لأن check-in ربما اكتشف mock ونريد الاحتفاظ بذلك
+      // isMocked: لو اكتشفنا teleporting → "yes" / لو لأ → نحافظ على قرار check-in
       const checkOutMockedUpdate = isTeleporting
         ? { isMocked: "yes" as const }
         : {};
@@ -328,7 +288,7 @@ export const visitRouter = router({
           .from(users).where(eq(users.id, ctx.user!.id)).limit(1))[0]?.name ?? "مدير غير معروف";
         notifyOwner({
           title: "🚨 انتقال وهمي مكتشف (Teleportation)",
-          content: `المدير: ${managerName}\nالفرع: ${visit.branchName}\nالمسافة: ${distanceToPrevBranchKm?.toFixed(1)} كم في وقت قصير جداً\nالوقت: ${now.toLocaleString("ar-EG")}`,
+          content: `المدير: ${managerName}\nالفرع: ${visit.branchName}\nالمسافة: ${distanceToPrevBranchKm?.toFixed(1)} كم في ${Math.round(prevResult!.timeDiffMin)} دقيقة\nالوقت: ${now.toLocaleString("ar-EG")}`,
         }).catch(() => {});
       }
 
@@ -336,10 +296,6 @@ export const visitRouter = router({
         success: true,
         durationMin: Math.round(durationMin),
         distanceRecorded: distanceToPrevBranchKm ?? null,
-        // لو الزيارة كانت قصيرة — نبلّغ الـ client عشان يعرض رسالة
-        shortVisitWarning: !isQualified
-          ? `الزيارة كانت ${Math.round(durationMin)} دقيقة فقط — المسافة لم تُسجَّل (الحد الأدنى ${MIN_VISIT_DURATION_MINUTES} دقيقة)`
-          : undefined,
       };
     }),
 
@@ -543,10 +499,22 @@ export const visitRouter = router({
             continue;
           }
 
-          // ✅ check-in offline: مسافة = null دلوقتي — هتتحسب عند الـ checkout
+          // ✅ check-in offline: فحص Teleportation + mock detection
           const ciScore   = ci.suspicionScore ?? 0;
-          const ciReasons = ci.mockReasons    ?? [];
-          const ciFinalMocked = ci.isMocked || ciScore >= 50;
+          const ciReasons = [...(ci.mockReasons ?? [])];
+
+          // فحص Teleportation للزيارات الأوفلاين
+          let ciServerTeleportScore = 0;
+          const checkInTime = new Date(ci.checkInAt);
+          const prevResult = await calcDistanceFromPrevBranch(db, manager.id, ci.branchName, checkInTime);
+          if (prevResult !== null && isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
+            ciServerTeleportScore = 100;
+            const speedKmh = Math.round(prevResult.km / (prevResult.timeDiffMin / 60));
+            ciReasons.push(`TELEPORTATION:${prevResult.prevBranchName}→${ci.branchName}:${prevResult.km.toFixed(1)}km:${Math.round(prevResult.timeDiffMin)}min:${speedKmh}kmh`);
+          }
+
+          const ciFinalMocked = ci.isMocked || ciScore >= 50 || ciServerTeleportScore >= 100;
+          const ciTotalScore = ciScore + ciServerTeleportScore;
 
           const [inserted] = await db.insert(visits).values({
             managerId: manager.id,
@@ -557,7 +525,7 @@ export const visitRouter = router({
             checkInAt: new Date(ci.checkInAt),
             status: "checked_in",
             isMocked: ciFinalMocked ? "yes" : "no",
-            suspicionScore: ciScore,
+            suspicionScore: ciTotalScore,
             mockReasons: ciReasons.length > 0 ? JSON.stringify(ciReasons) : null,
             distanceToPrevBranchKm: undefined,
           }).$returningId();
@@ -591,53 +559,27 @@ export const visitRouter = router({
 
           if (!visitId) { failedLocalIds.push(co.localCheckInId); continue; }
 
-          // ── احسب المدة واتحقق من الـ 15 دقيقة ───────────────────────────
           const checkInTime  = new Date(co.checkInAt);
           const checkOutTime = new Date(co.checkOutAt);
           const durationMin  = (checkOutTime.getTime() - checkInTime.getTime()) / 60_000;
-          const isQualified  = durationMin >= MIN_VISIT_DURATION_MINUTES;
 
           let distanceToPrevBranchKm: number | undefined;
           let isTeleporting = false;
 
-          if (isQualified) {
-            const visitRow = await db.select({ branchName: branches.name })
-              .from(visits)
-              .innerJoin(branches, eq(visits.branchId, branches.id))
-              .where(eq(visits.id, visitId))
-              .limit(1);
+          const visitRow = await db.select({ branchName: branches.name })
+            .from(visits)
+            .innerJoin(branches, eq(visits.branchId, branches.id))
+            .where(eq(visits.id, visitId))
+            .limit(1);
 
-            if (visitRow[0]) {
-              const km = await calcDistanceFromPrevBranch(
-                db, manager.id, visitRow[0].branchName, checkInTime
-              );
-              if (km !== null) {
-                distanceToPrevBranchKm = km;
-                
-                const prevVisit = await db.select({ checkOutAt: visits.checkOutAt })
-                  .from(visits)
-                  .where(and(
-                    eq(visits.managerId, manager.id),
-                    eq(visits.status, "checked_out"),
-                    lt(visits.checkInAt, checkInTime)
-                  ))
-                  .orderBy(desc(visits.checkInAt))
-                  .limit(1);
-
-                if (prevVisit[0]?.checkOutAt) {
-                  const timeDiffMs = checkInTime.getTime() - prevVisit[0].checkOutAt.getTime();
-                  const timeDiffHours = timeDiffMs / 3600000;
-                  
-                  // ── حماية من الانتقال اللحظي (نفس الدقيقة أو أقل) ─────────────
-                  // لو المسافة موجودة والسرعة خيالية (> 150 كم/س)
-                  if (timeDiffHours > 0 && (km / timeDiffHours) > 150) {
-                    isTeleporting = true;
-                  } 
-                  // لو المسافة موجودة والزمن صفر أو سالب (انتقال آني)
-                  else if (km > 0.1 && timeDiffMs <= 0) {
-                    isTeleporting = true;
-                  }
-                }
+          if (visitRow[0]) {
+            const prevResult = await calcDistanceFromPrevBranch(
+              db, manager.id, visitRow[0].branchName, checkInTime
+            );
+            if (prevResult !== null) {
+              distanceToPrevBranchKm = prevResult.km;
+              if (isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
+                isTeleporting = true;
               }
             }
           }
