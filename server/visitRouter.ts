@@ -6,6 +6,7 @@ import { visits, managers, branches, users, locationLogs } from "../drizzle/sche
 import { storagePut } from "./storage";
 import { getDistanceMeters } from "../shared/utils";
 import { getBranchDistance } from "../shared/gizaBranchDistances";
+import { notifyOwner } from "./_core/notification";
 
 // ── الحد الأدنى للإقامة في الفرع عشان تتحسب المسافة (بالدقايق) ──────────────
 const MIN_VISIT_DURATION_MINUTES = 0;
@@ -124,6 +125,17 @@ export const visitRouter = router({
         mockReasons: finalReasons,
         distanceToPrevBranchKm: undefined,  // هيتحدث وقت الـ checkout
       });
+
+      // 🚨 لو الزيارة وهمية — ابعت إشعار فوري للأدمن
+      if (finalIsMocked) {
+        const managerName = (await db.select({ name: users.name })
+          .from(users).where(eq(users.id, ctx.user!.id)).limit(1))[0]?.name ?? "مدير غير معروف";
+        notifyOwner({
+          title: "🚨 زيارة وهمية مكتشفة",
+          content: `المدير: ${managerName}\nالفرع: ${branch.name}\nالوقت: ${new Date().toLocaleString("ar-EG")}\nدرجة الشك: ${finalScore}\nالأسباب: ${clientReasons.join(", ") || "كشف تلقائي"}`,
+        }).catch(() => {}); // لا نوقف الـ check-in لو فشل الإشعار
+      }
+
       return { success: true };
     }),
 
@@ -309,6 +321,16 @@ export const visitRouter = router({
         eq(visits.id, input.visitId),
         eq(visits.managerId, manager.id),
       ));
+
+      // 🚨 لو السيرفر اكتشف teleporting — ابعت إشعار للأدمن
+      if (isTeleporting) {
+        const managerName = (await db.select({ name: users.name })
+          .from(users).where(eq(users.id, ctx.user!.id)).limit(1))[0]?.name ?? "مدير غير معروف";
+        notifyOwner({
+          title: "🚨 انتقال وهمي مكتشف (Teleportation)",
+          content: `المدير: ${managerName}\nالفرع: ${visit.branchName}\nالمسافة: ${distanceToPrevBranchKm?.toFixed(1)} كم في وقت قصير جداً\nالوقت: ${now.toLocaleString("ar-EG")}`,
+        }).catch(() => {});
+      }
 
       return {
         success: true,
@@ -539,6 +561,18 @@ export const visitRouter = router({
             mockReasons: ciReasons.length > 0 ? JSON.stringify(ciReasons) : null,
             distanceToPrevBranchKm: undefined,
           }).$returningId();
+
+          // 🚨 لو الزيارة المتزامنة وهمية — ابعت إشعار للأدمن
+          if (ciFinalMocked) {
+            const branchRes = await db.select({ name: branches.name })
+              .from(branches).where(eq(branches.id, ci.branchId)).limit(1);
+            const managerUserRes = await db.select({ name: users.name })
+              .from(users).where(eq(users.id, ctx.user!.id)).limit(1);
+            notifyOwner({
+              title: "🚨 زيارة وهمية مكتشفة (أوفلاين)",
+              content: `المدير: ${managerUserRes[0]?.name ?? "غير معروف"}\nالفرع: ${branchRes[0]?.name ?? ci.branchName}\nوقت الدخول: ${new Date(ci.checkInAt).toLocaleString("ar-EG")}\nدرجة الشك: ${ciScore}\nالأسباب: ${ciReasons.join(", ") || "كشف تلقائي"}`,
+            }).catch(() => {});
+          }
 
           localToServerId.set(ci.localId, inserted.id);
           synced++;

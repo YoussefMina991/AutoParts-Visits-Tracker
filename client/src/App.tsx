@@ -23,6 +23,7 @@ import { LocationPermissionGuide } from "./components/LocationPermissionGuide";
 import { useLocationPermissionState } from "./hooks/useLocationPermission";
 import { Capacitor } from "@capacitor/core";
 import { createContext, useContext } from "react";
+import { ManagerBottomNav } from "./components/ManagerBottomNav";
 
 // ── Geofence Context — share the single GPS watcher with all pages ─────────
 interface GeofenceContextValue {
@@ -42,6 +43,7 @@ function ManagerGeofenceProvider({ children }: { children: React.ReactNode }) {
   return (
     <GeofenceContext.Provider value={{ latestLocation }}>
       {children}
+      <ManagerBottomNav />
       {showGuide && (
         <LocationPermissionGuide
           onDismiss={dismiss}
@@ -65,40 +67,37 @@ function ProtectedRouter() {
 
   const isAdmin = user.role === "admin";
 
-  const routes = (
-    <DashboardLayout>
-      <Switch>
-        {isAdmin && (
-          <>
-            <Route path="/" component={AdminDashboard} />
-            <Route path="/dashboard" component={AdminDashboard} />
-            <Route path="/branches" component={AdminBranches} />
-            <Route path="/live-map" component={AdminLiveTracking} />
-            <Route path="/managers" component={AdminManagers} />
-            <Route path="/users" component={AdminUsers} />
-            <Route path="/reports" component={AdminReports} />
-          </>
-        )}
-        {!isAdmin && (
-          <>
-            <Route path="/" component={ManagerDashboard} />
-            <Route path="/dashboard" component={ManagerDashboard} />
-            <Route path="/check-in" component={BranchCheckIn} />
-            <Route path="/history" component={VisitHistory} />
-            <Route path="/sync" component={SyncPage} />
-          </>
-        )}
-        <Route component={NotFound} />
-      </Switch>
-    </DashboardLayout>
-  );
-
-  // Managers get background geofence + permission guide
-  if (!isAdmin) {
-    return <ManagerGeofenceProvider>{routes}</ManagerGeofenceProvider>;
+  // ── Admin: white card layout ───────────────────────────────────────────────
+  if (isAdmin) {
+    return (
+      <DashboardLayout>
+        <Switch>
+          <Route path="/" component={AdminDashboard} />
+          <Route path="/dashboard" component={AdminDashboard} />
+          <Route path="/branches" component={AdminBranches} />
+          <Route path="/live-map" component={AdminLiveTracking} />
+          <Route path="/managers" component={AdminManagers} />
+          <Route path="/users" component={AdminUsers} />
+          <Route path="/reports" component={AdminReports} />
+          <Route component={NotFound} />
+        </Switch>
+      </DashboardLayout>
+    );
   }
 
-  return routes;
+  // ── Manager: dark mobile layout — NO DashboardLayout wrapper ──────────────
+  const managerRoutes = (
+    <Switch>
+      <Route path="/" component={ManagerDashboard} />
+      <Route path="/dashboard" component={ManagerDashboard} />
+      <Route path="/check-in" component={BranchCheckIn} />
+      <Route path="/history" component={VisitHistory} />
+      <Route path="/sync" component={SyncPage} />
+      <Route component={NotFound} />
+    </Switch>
+  );
+
+  return <ManagerGeofenceProvider>{managerRoutes}</ManagerGeofenceProvider>;
 }
 
 function App() {

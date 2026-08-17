@@ -1,18 +1,13 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Link, useLocation } from "wouter";
+import { trpc } from "@/lib/trpc";
+import { useState, useRef, useEffect } from "react";
+import { format } from "date-fns";
 
 // ─── Design Tokens (single source of truth) ──────────────────────────────────
-// BG:        #F4F4F5  (outer shell)
-// Surface:   #FFFFFF  (white card)
-// Border:    #E4E4E7  (all borders)
-// Text-1:    #18181B  (headings)
-// Text-2:    #71717A  (secondary)
-// Text-3:    #A1A1AA  (placeholder / muted)
-// Active:    #18181B  (selected nav item)
-// Accent:    #18181B  (primary button)
-// Radius-sm: 12px     (buttons, inputs)
-// Radius-md: 16px     (cards)
-// Radius-lg: 24px     (main card)
+// BG:        #F4F4F5  surface: #FFFFFF  border: #E4E4E7
+// text-1:    #18181B  text-2:  #71717A  text-3: #A1A1AA
+// accent:    #18181B  red:     #DC2626  green:  #16A34A
 
 const adminMenuGroups = [
   {
@@ -45,6 +40,343 @@ const managerMenuGroups = [
   },
 ];
 
+// ─── Notification Bell ────────────────────────────────────────────────────────
+function NotificationBell() {
+  const [open, setOpen] = useState(false);
+  const [seenIds, setSeenIds] = useState<Set<number>>(() => {
+    try {
+      const saved = localStorage.getItem("notif_seen_ids");
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch { return new Set(); }
+  });
+  const ref = useRef<HTMLDivElement>(null);
+
+  // جيب آخر 20 زيارة وهمية
+  const { data: mockedData, isLoading } = trpc.visit.adminList.useQuery(
+    { limit: 20, offset: 0 },
+    {
+      refetchInterval: 30000,
+      select: (d) => (d.items ?? []).filter((v: any) => v.isMocked === "yes"),
+    }
+  );
+
+  const mockedVisits = (mockedData ?? []) as any[];
+  const unseenCount = mockedVisits.filter((v: any) => !seenIds.has(v.id)).length;
+
+  // أغلق الـ dropdown لو ضغط برا
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const markAllSeen = () => {
+    const newSeen = new Set([...seenIds, ...mockedVisits.map((v: any) => v.id)]);
+    setSeenIds(newSeen);
+    localStorage.setItem("notif_seen_ids", JSON.stringify([...newSeen]));
+  };
+
+  const handleOpen = () => {
+    setOpen((o) => !o);
+    if (!open) markAllSeen();
+  };
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      {/* Bell button */}
+      <button
+        onClick={handleOpen}
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "#71717A",
+          background: open ? "#F4F4F5" : "transparent",
+          border: "none",
+          cursor: "pointer",
+          position: "relative",
+          transition: "background .15s",
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "#F4F4F5")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = open ? "#F4F4F5" : "transparent")}
+      >
+        <span
+          className="material-symbols-outlined"
+          style={{ fontSize: 19, fontVariationSettings: open ? "'FILL' 1" : "'FILL' 0" }}
+        >
+          notifications
+        </span>
+        {/* Badge */}
+        {unseenCount > 0 && (
+          <span
+            style={{
+              position: "absolute",
+              top: 4,
+              right: 4,
+              minWidth: 14,
+              height: 14,
+              borderRadius: 7,
+              background: "#DC2626",
+              color: "#fff",
+              fontSize: 8,
+              fontWeight: 800,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "0 3px",
+              border: "1.5px solid #fff",
+            }}
+          >
+            {unseenCount > 9 ? "9+" : unseenCount}
+          </span>
+        )}
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            right: 0,
+            width: 320,
+            background: "#fff",
+            border: "1px solid #E4E4E7",
+            borderRadius: 16,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.10)",
+            zIndex: 999,
+            overflow: "hidden",
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "12px 16px",
+              borderBottom: "1px solid #F4F4F5",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 16, color: "#DC2626", fontVariationSettings: "'FILL' 1" }}
+              >
+                warning
+              </span>
+              <p style={{ fontSize: 13, fontWeight: 700, color: "#18181B" }}>
+                زيارات وهمية مكتشفة
+              </p>
+            </div>
+            {mockedVisits.length > 0 && (
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "2px 8px",
+                  borderRadius: 20,
+                  background: "#FEF2F2",
+                  color: "#DC2626",
+                  border: "1px solid #FECACA",
+                }}
+              >
+                {mockedVisits.length} زيارة
+              </span>
+            )}
+          </div>
+
+          {/* List */}
+          <div style={{ maxHeight: 360, overflowY: "auto", scrollbarWidth: "none" }}>
+            {isLoading ? (
+              <div style={{ padding: "24px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} style={{ display: "flex", gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 16, background: "#F4F4F5", flexShrink: 0 }} />
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div style={{ height: 12, borderRadius: 4, background: "#F4F4F5" }} />
+                      <div style={{ height: 10, width: "60%", borderRadius: 4, background: "#F4F4F5" }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : mockedVisits.length === 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  padding: "32px 16px",
+                }}
+              >
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 32, color: "#D4D4D8", fontVariationSettings: "'FILL' 1" }}
+                >
+                  verified_user
+                </span>
+                <p style={{ fontSize: 12, color: "#A1A1AA", fontWeight: 500, textAlign: "center" }}>
+                  لا توجد زيارات وهمية مكتشفة
+                </p>
+              </div>
+            ) : (
+              mockedVisits.map((v: any, idx: number) => {
+                const isNew = !seenIds.has(v.id);
+                const checkin = new Date(v.checkInAt);
+                const timeAgo = (() => {
+                  const diff = Math.round((Date.now() - checkin.getTime()) / 60000);
+                  if (diff < 1) return "الآن";
+                  if (diff < 60) return `منذ ${diff} دقيقة`;
+                  if (diff < 1440) return `منذ ${Math.floor(diff / 60)} ساعة`;
+                  return format(checkin, "d MMM");
+                })();
+
+                return (
+                  <div
+                    key={v.id}
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      padding: "10px 16px",
+                      borderBottom: idx < mockedVisits.length - 1 ? "1px solid #F4F4F5" : "none",
+                      background: isNew ? "#FFFBFB" : "#fff",
+                      transition: "background .2s",
+                    }}
+                  >
+                    {/* Icon */}
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 10,
+                        background: "#FEF2F2",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ fontSize: 16, color: "#DC2626", fontVariationSettings: "'FILL' 1" }}
+                      >
+                        location_off
+                      </span>
+                    </div>
+
+                    {/* Content */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+                        <p
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            color: "#18181B",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {v.managerName ?? "مدير غير معروف"}
+                        </p>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                          {isNew && (
+                            <span
+                              style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: "50%",
+                                background: "#DC2626",
+                                display: "inline-block",
+                              }}
+                            />
+                          )}
+                          <span style={{ fontSize: 10, color: "#A1A1AA", fontWeight: 500 }}>
+                            {timeAgo}
+                          </span>
+                        </div>
+                      </div>
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color: "#71717A",
+                          marginTop: 2,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {v.branchName}
+                      </p>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          marginTop: 4,
+                          fontSize: 9,
+                          fontWeight: 700,
+                          padding: "2px 7px",
+                          borderRadius: 20,
+                          background: "#FEF2F2",
+                          color: "#DC2626",
+                          border: "1px solid #FECACA",
+                        }}
+                      >
+                        موقع وهمي
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Footer */}
+          {mockedVisits.length > 0 && (
+            <div style={{ padding: "10px 16px", borderTop: "1px solid #F4F4F5" }}>
+              <Link href="/reports">
+                <a
+                  onClick={() => setOpen(false)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    padding: "7px",
+                    borderRadius: 10,
+                    background: "#F4F4F5",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#71717A",
+                    textDecoration: "none",
+                    transition: "background .15s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#E4E4E7")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "#F4F4F5")}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
+                    open_in_new
+                  </span>
+                  عرض كل التقارير
+                </a>
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Layout ──────────────────────────────────────────────────────────────
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
@@ -176,17 +508,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
             {/* Right */}
             <div className="flex items-center gap-1.5 ml-3">
-              <button
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[#71717A] hover:bg-[#F4F4F5] transition-colors relative"
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: 19 }}>
-                  notifications
-                </span>
-                <span
-                  className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full"
-                  style={{ background: "#EF4444" }}
-                />
-              </button>
+              {/* Bell — للأدمن بس */}
+              {isAdmin && <NotificationBell />}
+
+              {/* Avatar */}
               <div
                 className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[12px] text-white ml-1"
                 style={{ background: "#18181B" }}

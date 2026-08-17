@@ -38,7 +38,7 @@ export default function BranchCheckIn() {
         longitude: gpsLocation.lon.toString(),
         isMocked: globalMockedStatus, // ✅ Use the real mocked status!
       });
-      toast.success(`✅ تسجيل دخول يدوي ناجح! ${globalMockedStatus ? "⚠️ (موقع وهمي)" : ""}`);
+      toast.success(`✅ تسجيل دخول ناجح في ${sortedBranches.find(b=>b.id===branchId)?.name ?? "الفرع"}`);
       refetchVisits();
     } catch (err: any) {
       toast.error(`❌ فشل الدخول: ${err.message || String(err)}`);
@@ -109,20 +109,20 @@ export default function BranchCheckIn() {
           </button>
         </div>
 
-        {/* Mock Location Warning for Manager */}
-        {globalMockedStatus && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex items-center gap-3 mb-2 animate-pulse">
-            <span className="material-symbols-outlined text-red-400">warning</span>
-            <div className="flex-1">
-              <p className="text-red-400 text-xs font-bold">تم اكتشاف موقع وهمي!</p>
-              <p className="text-red-400/70 text-[10px]">سيتم تسجيل هذه الزيارة كزيارة غير قانونية وتنبيه الإدارة.</p>
-            </div>
+        {/* GPS status indicator - neutral, no mock hint */}
+        {gpsLocation && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-[oklch(0.82_0.15_200/0.08)] border border-[oklch(0.82_0.15_200/0.15)]">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-[var(--color-neon)] opacity-60 animate-live-blink" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--color-neon)]" />
+            </span>
+            <p className="text-[oklch(0.82_0.15_200)] text-xs font-medium">GPS نشط — دقة التحديد جيدة</p>
           </div>
         )}
 
         {/* Manual Check-In/Out Controls (Fallback/Debug) */}
         <div className="glass rounded-2xl p-4 flex flex-col gap-3 mt-2 mb-4">
-          <p className="text-sm text-[var(--color-muted-foreground)]">تسجيل الدخول اليدوي (للتأكد من عمل النظام)</p>
+          <p className="text-sm text-[var(--color-muted-foreground)]">تسجيل الدخول اليدوي</p>
           {activeVisit ? (
             <button
               onClick={handleManualCheckOut}

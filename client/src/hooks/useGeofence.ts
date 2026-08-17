@@ -484,7 +484,7 @@ export function useGeofence() {
               suspicionScore: totalJsScore,
               mockReasons: allJsReasons,
             });
-            toast.success(`✅ تسجيل دخول تلقائي في ${branch.name}${ detectedMock ? " ⚠️ موقع مشبوه" : ""}`);
+            toast.success(`✅ تسجيل دخول تلقائي في ${branch.name}`);
             refetchHistoryRef.current();
           } catch (err: any) {
             if (err.message?.includes("Already checked")) {
