@@ -98,3 +98,4 @@ client/public/__manus__/version.json
 # ── Misc dev artifacts ────────────────────────────────────────────────────────
 tmp/
 temp/
+*.zip
