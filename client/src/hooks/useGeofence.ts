@@ -178,7 +178,13 @@ export function useGeofence() {
   syncVisitsMutationRef.current = syncVisitsMutation;
 
   // State to expose the latest background location to the UI
-  const [latestLocation, setLatestLocation] = useState<{ lat: number; lon: number; isMocked: boolean } | null>(null);
+  const [latestLocation, setLatestLocation] = useState<{
+    lat: number;
+    lon: number;
+    isMocked: boolean;
+    suspicionScore: number;
+    mockReasons: string[];
+  } | null>(null);
 
   // ── Sync to Native Preferences ──────────────────────────────────────────
   useEffect(() => {
@@ -376,7 +382,7 @@ export function useGeofence() {
     // لأن الـ JS Layer دعم إضافي وليس الحكم الرئيسي
     const detectedMock = totalJsScore >= 30;
     globalMockedStatus = detectedMock;
-    setLatestLocation({ lat: currentLat, lon: currentLng, isMocked: detectedMock });
+    setLatestLocation({ lat: currentLat, lon: currentLng, isMocked: detectedMock, suspicionScore: totalJsScore, mockReasons: allJsReasons });
     if (historyLoadingRef.current) return;
 
     // 1. احفظ نقطة الـ GPS في الـ queue

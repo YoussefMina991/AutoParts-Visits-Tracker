@@ -201,8 +201,36 @@ export const visitRouter = router({
         }
       }
 
-      // نفس المنطق: لا نكتب "no" أبداً — فقط "yes" إذا اكتشفنا teleporting
-      const nativeCheckOutMockedUpdate = isTeleporting
+      // ── 🚨 كشف الزيارة القصيرة جداً ────────────────────────────────────────
+      // أقل من 3 دقايق = مشبوه جداً (نقاط عالية)
+      // أقل من 7 دقايق = مشبوه (نقاط متوسطة)
+      let shortVisitScore = 0;
+      let shortVisitReason: string | null = null;
+      if (durationMin < 3) {
+        shortVisitScore = 80;
+        shortVisitReason = `SHORT_VISIT:${Math.round(durationMin * 60)}sec`;
+      } else if (durationMin < 7) {
+        shortVisitScore = 40;
+        shortVisitReason = `SHORT_VISIT:${Math.round(durationMin)}min`;
+      }
+
+      // نجيب الـ suspicionScore الحالي من الداتابيز عشان نجمع عليه
+      const currentVisitData = await db.select({
+        suspicionScore: visits.suspicionScore,
+        mockReasons: visits.mockReasons,
+      }).from(visits).where(eq(visits.id, visit.id)).limit(1);
+
+      const existingScore   = currentVisitData[0]?.suspicionScore ?? 0;
+      const existingReasons: string[] = (() => {
+        try { return JSON.parse(currentVisitData[0]?.mockReasons ?? "[]"); } catch { return []; }
+      })();
+
+      const finalScore   = existingScore + shortVisitScore; // teleport score اتحسب وقت checkIn
+      const finalReasons = shortVisitReason ? [...existingReasons, shortVisitReason] : existingReasons;
+      const isShortMocked = shortVisitScore >= 80; // أقل من 3 دقايق → وهمي مباشرة
+
+      // نفس المنطق: لا نكتب "no" أبداً — فقط "yes" إذا اكتشفنا teleporting أو زيارة قصيرة جداً
+      const nativeCheckOutMockedUpdate = (isTeleporting || isShortMocked)
         ? { isMocked: "yes" as const }
         : {};
 
@@ -211,6 +239,10 @@ export const visitRouter = router({
         status: "checked_out",
         ...nativeCheckOutMockedUpdate,
         ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm } : {}),
+        ...(shortVisitScore > 0 ? {
+          suspicionScore: finalScore,
+          mockReasons: JSON.stringify(finalReasons),
+        } : {}),
       }).where(and(
         eq(visits.id, visit.id),
         eq(visits.managerId, manager.id),
@@ -267,8 +299,33 @@ export const visitRouter = router({
         }
       }
 
-      // isMocked: لو اكتشفنا teleporting → "yes" / لو لأ → نحافظ على قرار check-in
-      const checkOutMockedUpdate = isTeleporting
+      // ── 🚨 كشف الزيارة القصيرة جداً ────────────────────────────────────────
+      let shortVisitScore = 0;
+      let shortVisitReason: string | null = null;
+      if (durationMin < 3) {
+        shortVisitScore = 80;
+        shortVisitReason = `SHORT_VISIT:${Math.round(durationMin * 60)}sec`;
+      } else if (durationMin < 7) {
+        shortVisitScore = 40;
+        shortVisitReason = `SHORT_VISIT:${Math.round(durationMin)}min`;
+      }
+
+      const currentVisitData = await db.select({
+        suspicionScore: visits.suspicionScore,
+        mockReasons: visits.mockReasons,
+      }).from(visits).where(eq(visits.id, input.visitId)).limit(1);
+
+      const existingScore   = currentVisitData[0]?.suspicionScore ?? 0;
+      const existingReasons: string[] = (() => {
+        try { return JSON.parse(currentVisitData[0]?.mockReasons ?? "[]"); } catch { return []; }
+      })();
+
+      const finalScore   = existingScore + shortVisitScore;
+      const finalReasons = shortVisitReason ? [...existingReasons, shortVisitReason] : existingReasons;
+      const isShortMocked = shortVisitScore >= 80;
+
+      // isMocked: لو اكتشفنا teleporting أو زيارة قصيرة جداً → "yes" / لو لأ → نحافظ على قرار check-in
+      const checkOutMockedUpdate = (isTeleporting || isShortMocked)
         ? { isMocked: "yes" as const }
         : {};
 
@@ -277,18 +334,30 @@ export const visitRouter = router({
         status: "checked_out",
         ...checkOutMockedUpdate,
         ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm } : {}),
+        ...(shortVisitScore > 0 ? {
+          suspicionScore: finalScore,
+          mockReasons: JSON.stringify(finalReasons),
+        } : {}),
       }).where(and(
         eq(visits.id, input.visitId),
         eq(visits.managerId, manager.id),
       ));
 
-      // 🚨 لو السيرفر اكتشف teleporting — ابعت إشعار للأدمن
+      // 🚨 إشعار للأدمن — teleporting أو زيارة قصيرة جداً
+      const managerName = (await db.select({ name: users.name })
+        .from(users).where(eq(users.id, ctx.user!.id)).limit(1))[0]?.name ?? "مدير غير معروف";
+
       if (isTeleporting) {
-        const managerName = (await db.select({ name: users.name })
-          .from(users).where(eq(users.id, ctx.user!.id)).limit(1))[0]?.name ?? "مدير غير معروف";
         notifyOwner({
           title: "🚨 انتقال وهمي مكتشف (Teleportation)",
           content: `المدير: ${managerName}\nالفرع: ${visit.branchName}\nالمسافة: ${distanceToPrevBranchKm?.toFixed(1)} كم في ${Math.round(prevResult!.timeDiffMin)} دقيقة\nالوقت: ${now.toLocaleString("ar-EG")}`,
+        }).catch(() => {});
+      }
+
+      if (isShortMocked) {
+        notifyOwner({
+          title: "🚨 زيارة قصيرة مشبوهة",
+          content: `المدير: ${managerName}\nالفرع: ${visit.branchName}\nمدة الزيارة: ${Math.round(durationMin * 60)} ثانية فقط\nالوقت: ${now.toLocaleString("ar-EG")}`,
         }).catch(() => {});
       }
 
@@ -584,8 +653,33 @@ export const visitRouter = router({
             }
           }
 
-          // لا نكتب "no" — نحافظ على قرار check-in إذا لم يُكتشف teleporting
-          const syncCheckOutMockedUpdate = isTeleporting
+          // ── 🚨 كشف الزيارة القصيرة (offline) ──────────────────────────────
+          let syncShortScore = 0;
+          let syncShortReason: string | null = null;
+          if (durationMin < 3) {
+            syncShortScore = 80;
+            syncShortReason = `SHORT_VISIT:${Math.round(durationMin * 60)}sec`;
+          } else if (durationMin < 7) {
+            syncShortScore = 40;
+            syncShortReason = `SHORT_VISIT:${Math.round(durationMin)}min`;
+          }
+
+          const syncCurrentData = await db.select({
+            suspicionScore: visits.suspicionScore,
+            mockReasons: visits.mockReasons,
+          }).from(visits).where(eq(visits.id, visitId)).limit(1);
+
+          const syncExistingScore   = syncCurrentData[0]?.suspicionScore ?? 0;
+          const syncExistingReasons: string[] = (() => {
+            try { return JSON.parse(syncCurrentData[0]?.mockReasons ?? "[]"); } catch { return []; }
+          })();
+
+          const syncFinalScore   = syncExistingScore + syncShortScore;
+          const syncFinalReasons = syncShortReason ? [...syncExistingReasons, syncShortReason] : syncExistingReasons;
+          const syncIsShortMocked = syncShortScore >= 80;
+
+          // لا نكتب "no" — نحافظ على قرار check-in إذا لم يُكتشف teleporting أو زيارة قصيرة
+          const syncCheckOutMockedUpdate = (isTeleporting || syncIsShortMocked)
             ? { isMocked: "yes" as const }
             : {};
 
@@ -595,6 +689,10 @@ export const visitRouter = router({
               status: "checked_out",
               ...syncCheckOutMockedUpdate,
               ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm } : {}),
+              ...(syncShortScore > 0 ? {
+                suspicionScore: syncFinalScore,
+                mockReasons: JSON.stringify(syncFinalReasons),
+              } : {}),
             })
             .where(and(
               eq(visits.id, visitId),

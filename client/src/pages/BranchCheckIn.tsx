@@ -11,7 +11,9 @@ export default function BranchCheckIn() {
   // ✅ Reuse the single GPS watcher from GeofenceContext — no duplicate watchPosition
   const { latestLocation } = useGeofenceContext();
   const gpsLocation = latestLocation ? { lat: latestLocation.lat, lon: latestLocation.lon } : null;
-  const globalMockedStatus = latestLocation?.isMocked ?? false;
+  const globalMockedStatus  = latestLocation?.isMocked      ?? false;
+  const globalSuspicionScore = latestLocation?.suspicionScore ?? 0;
+  const globalMockReasons    = latestLocation?.mockReasons    ?? [];
 
   const { data: assignedBranches = [] } = trpc.manager.getMyBranches.useQuery();
   const { data: visitsData, refetch: refetchVisits } = trpc.visit.myHistory.useQuery({ limit: 5, offset: 0 });
@@ -36,7 +38,9 @@ export default function BranchCheckIn() {
         branchId,
         latitude: gpsLocation.lat.toString(),
         longitude: gpsLocation.lon.toString(),
-        isMocked: globalMockedStatus, // ✅ Use the real mocked status!
+        isMocked: globalMockedStatus,
+        suspicionScore: globalSuspicionScore,
+        mockReasons: globalMockReasons,
       });
       toast.success(`✅ تسجيل دخول ناجح في ${sortedBranches.find(b=>b.id===branchId)?.name ?? "الفرع"}`);
       refetchVisits();
