@@ -5,10 +5,14 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
+import android.os.Looper;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationCallback;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationResult;
+import com.google.android.gms.location.LocationServices;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -19,7 +23,6 @@ import android.os.IBinder;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 /**
  * GeolocationServiceWrapper — النسخة المُصلحة
@@ -43,8 +46,6 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 public class GeolocationServiceWrapper extends Service {
 
     private static final String TAG = "BranchTracker:Wrapper";
-    private static final String ACTION_BROADCAST =
-            "com.equimaps.capacitor_background_geolocation.broadcast";
 
     // ── Foreground Notification ───────────────────────────────────────────────
     private static final String CHANNEL_ID   = "branch_tracker_wrapper";
@@ -71,28 +72,9 @@ public class GeolocationServiceWrapper extends Service {
         public void onAccuracyChanged(Sensor sensor, int accuracy) {}
     };
 
-    // ── GPS Broadcast Receiver ────────────────────────────────────────────────
-    private final BroadcastReceiver locationReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            if (intent == null || !intent.hasExtra("location")) return;
-
-            Location location = intent.getParcelableExtra("location");
-            if (location == null) return;
-
-            Log.d(TAG, "GPS update → " + location.getLatitude()
-                    + ", " + location.getLongitude()
-                    + " | accel=" + latestAccelMagnitude);
-
-            // مرّر آخر قراءة Accelerometer لـ NativeGeofenceEngine قبل المعالجة
-            NativeGeofenceEngine.setLastAcceleration(latestAccelMagnitude);
-
-            // شغّل معالجة الـ Geofence في thread منفصل (لا تعطّل الـ main thread)
-            new Thread(() ->
-                NativeGeofenceEngine.processLocation(context, location)
-            ).start();
-        }
-    };
+    // ── Direct GPS Tracking (FusedLocationProvider) ───────────────────────────
+    private FusedLocationProviderClient fusedLocationClient;
+    private LocationCallback locationCallback;
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -110,12 +92,26 @@ public class GeolocationServiceWrapper extends Service {
         // 3. ابدأ Accelerometer (قراءة مستمرة كل ~200ms = SENSOR_DELAY_GAME)
         startAccelerometer();
 
-        // 4. سجّل مستمع GPS
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-            locationReceiver,
-            new IntentFilter(ACTION_BROADCAST)
-        );
-        Log.i(TAG, "Registered GPS broadcast receiver ✓");
+        // 4. ابدأ تتبع الموقع مباشرة
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+        locationCallback = new LocationCallback() {
+            @Override
+            public void onLocationResult(LocationResult locationResult) {
+                if (locationResult == null) return;
+                for (Location location : locationResult.getLocations()) {
+                    if (location == null) continue;
+                    Log.d(TAG, "GPS update → " + location.getLatitude()
+                            + ", " + location.getLongitude()
+                            + " | accel=" + latestAccelMagnitude);
+
+                    NativeGeofenceEngine.setLastAcceleration(latestAccelMagnitude);
+                    new Thread(() ->
+                        NativeGeofenceEngine.processLocation(GeolocationServiceWrapper.this, location)
+                    ).start();
+                }
+            }
+        };
+        startLocationUpdates();
     }
 
     @Override
@@ -137,7 +133,9 @@ public class GeolocationServiceWrapper extends Service {
         }
 
         // أوقف مستمع GPS
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(locationReceiver);
+        if (fusedLocationClient != null && locationCallback != null) {
+            fusedLocationClient.removeLocationUpdates(locationCallback);
+        }
 
         super.onDestroy();
     }
@@ -209,5 +207,24 @@ public class GeolocationServiceWrapper extends Service {
             SensorManager.SENSOR_DELAY_GAME
         );
         Log.i(TAG, "Accelerometer registered: " + registered);
+    }
+
+    private void startLocationUpdates() {
+        try {
+            LocationRequest locationRequest = new LocationRequest();
+            locationRequest.setInterval(10000); // 10 ثواني (احتياطي)
+            locationRequest.setFastestInterval(5000);
+            locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+            locationRequest.setSmallestDisplacement(20f); // فقط لو تحرك 20 متر
+
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback,
+                Looper.getMainLooper()
+            );
+            Log.i(TAG, "Started FusedLocationProvider updates directly ✓");
+        } catch (SecurityException e) {
+            Log.e(TAG, "Missing location permissions", e);
+        }
     }
 }
