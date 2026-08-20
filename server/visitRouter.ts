@@ -44,7 +44,7 @@ async function calcDistanceFromPrevBranch(
   const km = getBranchDistance(prev.branchName, currentBranchName);
   if (km === null) return null;
 
-  const timeDiffMin = (referenceTime.getTime() - prev.checkOutAt.getTime()) / 60_000;
+  const timeDiffMin = (referenceTime.getTime() - (prev.checkOutAt as Date).getTime()) / 60_000;
 
   return { km, prevBranchName: prev.branchName, timeDiffMin };
 }
@@ -68,9 +68,6 @@ export const visitRouter = router({
       photoBase64: z.string().optional(),
       notes: z.string().optional(),
       isMocked: z.boolean().optional(),
-      // ── نظام كشف التلاعب المتقدم ──────────────────────────────────────
-      suspicionScore: z.number().min(0).max(500).optional(),
-      mockReasons: z.array(z.string()).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -101,32 +98,24 @@ export const visitRouter = router({
         photoUrl = stored.url;
       }
 
-      // ── دمج نقاط الشك من الـ client مع فحوصات السيرفر ──────────────────────
-      const clientScore   = input.suspicionScore ?? 0;
-      const clientReasons = input.mockReasons    ?? [];
-
       // ── 🚨 فحص Teleportation وقت الـ CheckIn (الأهم) ────────────────────────
-      // السيرفر بيفحص: هل المدير وصل من فرع تاني في وقت مستحيل؟
-      let serverTeleportScore = 0;
-      const serverTeleportReasons: string[] = [];
+      let isTeleporting = false;
+      const teleportReasons: string[] = [];
 
       const prevResult = await calcDistanceFromPrevBranch(db, manager.id, branch.name, new Date());
       if (prevResult !== null) {
         const { km, prevBranchName, timeDiffMin } = prevResult;
         if (isTeleportation(km, timeDiffMin)) {
-          serverTeleportScore = 100;
+          isTeleporting = true;
           const speedKmh = Math.round(km / (timeDiffMin / 60));
-          serverTeleportReasons.push(
+          teleportReasons.push(
             `TELEPORTATION:${prevBranchName}→${branch.name}:${km.toFixed(1)}km:${Math.round(timeDiffMin)}min:${speedKmh}kmh`
           );
         }
       }
 
-      const totalScore    = clientScore + serverTeleportScore;
-      const allReasons    = [...clientReasons, ...serverTeleportReasons];
-      const finalIsMocked = input.isMocked || clientScore >= 50 || serverTeleportScore >= 100;
-      const finalScore    = totalScore;
-      const finalReasons  = allReasons.length > 0 ? JSON.stringify(allReasons) : null;
+      const finalIsMocked = input.isMocked || isTeleporting;
+      const finalReasons  = teleportReasons.length > 0 ? JSON.stringify(teleportReasons) : null;
 
       // ✅ المسافة هتتحسب وقت الـ Check-Out مش هنا — بنحفظ distanceToPrevBranchKm = null دلوقتي
       await db.insert(visits).values({
@@ -135,7 +124,7 @@ export const visitRouter = router({
         accuracyIn: input.accuracy, photoUrl, notes: input.notes,
         status: "checked_in",
         isMocked: finalIsMocked ? "yes" : "no",
-        suspicionScore: finalScore,
+        suspicionScore: finalIsMocked ? 100 : 0,
         mockReasons: finalReasons,
         distanceToPrevBranchKm: undefined,  // هيتحدث وقت الـ checkout
       });
@@ -146,7 +135,7 @@ export const visitRouter = router({
           .from(users).where(eq(users.id, ctx.user!.id)).limit(1))[0]?.name ?? "مدير غير معروف";
         notifyOwner({
           title: "🚨 زيارة وهمية مكتشفة",
-          content: `المدير: ${managerName}\nالفرع: ${branch.name}\nالوقت: ${new Date().toLocaleString("ar-EG")}\nدرجة الشك: ${finalScore}\nالأسباب: ${clientReasons.join(", ") || "كشف تلقائي"}`,
+          content: `المدير: ${managerName}\nالفرع: ${branch.name}\nالوقت: ${new Date().toLocaleString("ar-EG")}\n${isTeleporting ? "تم اكتشاف انتقال غير منطقي (Teleportation)" : "تحديد موقع وهمي"}`,
         }).catch(() => {}); // لا نوقف الـ check-in لو فشل الإشعار
       }
 
@@ -238,7 +227,7 @@ export const visitRouter = router({
         checkOutAt: now,
         status: "checked_out",
         ...nativeCheckOutMockedUpdate,
-        ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm } : {}),
+        ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm: distanceToPrevBranchKm.toString() } : {}),
         ...(shortVisitScore > 0 ? {
           suspicionScore: finalScore,
           mockReasons: JSON.stringify(finalReasons),
@@ -333,7 +322,7 @@ export const visitRouter = router({
         checkOutAt: now,
         status: "checked_out",
         ...checkOutMockedUpdate,
-        ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm } : {}),
+        ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm: distanceToPrevBranchKm.toString() } : {}),
         ...(shortVisitScore > 0 ? {
           suspicionScore: finalScore,
           mockReasons: JSON.stringify(finalReasons),
@@ -404,7 +393,7 @@ export const visitRouter = router({
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
-      const conditions = [];
+      const conditions: any[] = [];
       if (input.managerId) conditions.push(eq(visits.managerId, input.managerId));
       if (input.branchId) conditions.push(eq(visits.branchId, input.branchId));
       if (input.startDate) conditions.push(gte(visits.checkInAt, new Date(input.startDate)));
@@ -516,8 +505,6 @@ export const visitRouter = router({
           checkInAt: z.string(),
           localId: z.string(),
           isMocked: z.boolean().optional(),
-          suspicionScore: z.number().min(0).max(500).optional(),
-          mockReasons: z.array(z.string()).optional(),
         }),
         z.object({
           type: z.literal("check_out"),
@@ -569,21 +556,19 @@ export const visitRouter = router({
           }
 
           // ✅ check-in offline: فحص Teleportation + mock detection
-          const ciScore   = ci.suspicionScore ?? 0;
-          const ciReasons = [...(ci.mockReasons ?? [])];
+          const ciReasons: string[] = [];
 
           // فحص Teleportation للزيارات الأوفلاين
-          let ciServerTeleportScore = 0;
+          let isTeleporting = false;
           const checkInTime = new Date(ci.checkInAt);
           const prevResult = await calcDistanceFromPrevBranch(db, manager.id, ci.branchName, checkInTime);
           if (prevResult !== null && isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
-            ciServerTeleportScore = 100;
+            isTeleporting = true;
             const speedKmh = Math.round(prevResult.km / (prevResult.timeDiffMin / 60));
             ciReasons.push(`TELEPORTATION:${prevResult.prevBranchName}→${ci.branchName}:${prevResult.km.toFixed(1)}km:${Math.round(prevResult.timeDiffMin)}min:${speedKmh}kmh`);
           }
 
-          const ciFinalMocked = ci.isMocked || ciScore >= 50 || ciServerTeleportScore >= 100;
-          const ciTotalScore = ciScore + ciServerTeleportScore;
+          const ciFinalMocked = ci.isMocked || isTeleporting;
 
           const [inserted] = await db.insert(visits).values({
             managerId: manager.id,
@@ -594,7 +579,7 @@ export const visitRouter = router({
             checkInAt: new Date(ci.checkInAt),
             status: "checked_in",
             isMocked: ciFinalMocked ? "yes" : "no",
-            suspicionScore: ciTotalScore,
+            suspicionScore: ciFinalMocked ? 100 : 0,
             mockReasons: ciReasons.length > 0 ? JSON.stringify(ciReasons) : null,
             distanceToPrevBranchKm: undefined,
           }).$returningId();
@@ -607,7 +592,7 @@ export const visitRouter = router({
               .from(users).where(eq(users.id, ctx.user!.id)).limit(1);
             notifyOwner({
               title: "🚨 زيارة وهمية مكتشفة (أوفلاين)",
-              content: `المدير: ${managerUserRes[0]?.name ?? "غير معروف"}\nالفرع: ${branchRes[0]?.name ?? ci.branchName}\nوقت الدخول: ${new Date(ci.checkInAt).toLocaleString("ar-EG")}\nدرجة الشك: ${ciScore}\nالأسباب: ${ciReasons.join(", ") || "كشف تلقائي"}`,
+              content: `المدير: ${managerUserRes[0]?.name ?? "غير معروف"}\nالفرع: ${branchRes[0]?.name ?? ci.branchName}\nوقت الدخول: ${new Date(ci.checkInAt).toLocaleString("ar-EG")}\n${isTeleporting ? "تم اكتشاف انتقال غير منطقي (Teleportation)" : "تحديد موقع وهمي"}`,
             }).catch(() => {});
           }
 
@@ -688,7 +673,7 @@ export const visitRouter = router({
               checkOutAt: checkOutTime,
               status: "checked_out",
               ...syncCheckOutMockedUpdate,
-              ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm } : {}),
+              ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm: distanceToPrevBranchKm.toString() } : {}),
               ...(syncShortScore > 0 ? {
                 suspicionScore: syncFinalScore,
                 mockReasons: JSON.stringify(syncFinalReasons),

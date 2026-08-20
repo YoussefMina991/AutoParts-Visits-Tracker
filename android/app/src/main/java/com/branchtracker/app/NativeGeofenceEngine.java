@@ -198,7 +198,7 @@ public class NativeGeofenceEngine {
         // ── منطق الـ Geofence ─────────────────────────────────────────────────
         try {
             JSONArray branches    = new JSONArray(branchesJson);
-            String currentActive  = statePrefs.getString(KEY_ACTIVE, null);
+            String currentActive  = capPrefs.getString(KEY_ACTIVE, null);
             double lat            = location.getLatitude();
             double lng            = location.getLongitude();
 
@@ -249,7 +249,7 @@ public class NativeGeofenceEngine {
                     Log.i(TAG, "Exiting " + currentActive);
                     boolean ok = sendCheckOut(apiUrl, currentActive);
                     if (ok) {
-                        statePrefs.edit().remove(KEY_ACTIVE).apply();
+                        capPrefs.edit().remove(KEY_ACTIVE).apply();
                         showNotification(context, NOTIF_CHECKOUT,
                             "🔴 خروج تلقائي", "تم تسجيل خروجك من: " + branchName);
                         currentActive = null;
@@ -268,8 +268,8 @@ public class NativeGeofenceEngine {
                     boolean ok = sendCheckIn(apiUrl, insideBranchId, lat, lng,
                         isMocked, suspicionScore, mockReasons);
                     if (ok) {
+                        capPrefs.edit().putString(KEY_ACTIVE, insideBranchId).apply();
                         statePrefs.edit()
-                            .putString(KEY_ACTIVE, insideBranchId)
                             .putLong(KEY_LAST_IN + insideBranchId, now)
                             .apply();
                         String title = isMocked ? "⚠️ دخول مشبوه" : "✅ دخول تلقائي";

@@ -54,6 +54,14 @@ const visitStore = localforage.createInstance({
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface IOSNearbyBranch {
+  id: number;
+  name: string;
+  address: string | null;
+  distanceMeters: number;
+  accuracy?: number;
+}
+
 interface OfflineLocation {
   latitude: string;
   longitude: string;
@@ -182,8 +190,6 @@ export function useGeofence() {
     lat: number;
     lon: number;
     isMocked: boolean;
-    suspicionScore: number;
-    mockReasons: string[];
   } | null>(null);
 
   // ── Sync to Native Preferences ──────────────────────────────────────────
@@ -195,10 +201,21 @@ export function useGeofence() {
       });
       Preferences.set({
         key: "api_url",
-        value: import.meta.env.VITE_API_URL || "http://192.168.1.8:3000",
+        value: import.meta.env.VITE_API_URL || "https://branch-visit-tracker.up.railway.app",
       });
     }
   }, [branches]);
+
+  // Sync active_branch_id for NativeGeofenceEngine
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      if (activeVisit) {
+        Preferences.set({ key: "active_branch_id", value: activeVisit.branchId.toString() });
+      } else {
+        Preferences.remove({ key: "active_branch_id" });
+      }
+    }
+  }, [activeVisit?.branchId]);
 
   // ── مساعد: هل في نت؟ ──────────────────────────────────────────────────────
   const isOnline = () => navigator.onLine;
@@ -294,75 +311,32 @@ export function useGeofence() {
     return () => clearInterval(interval);
   }, []);
 
-  // ── نظام نقاط الشك في الـ JavaScript Layer — النسخة المُصلحة ─────────────
-  //
-  // الإصلاحات:
-  // ① عتبة الكشف خُفّضت من 50 → 30 في الـ JS Layer
-  //    لأن Native Layer هو الحكم الرئيسي — JS Layer دعم إضافي
-  // ② accuracy ≤ 10 فقط (وليس ≤ 15) لتقليل false positives
-  //    accuracy=12 أو 15 طبيعية في المدن المكتظة
-  // ③ فحص ثبات الموقع الجغرافي (lat/lng ثابت = مريب جداً)
-  //    GPS حقيقي لا يُعطي نفس الإحداثيات بالضبط مرتين
-  // ④ Web fallback يفحص accuracy بدقة أكبر
-  const calcJsSuspicion = (
+  // ── نظام مبسط لكشف المواقع الوهمية ──────────────────────────────────────
+  const checkIsMocked = (
     accuracy: number | undefined,
     isMockedFromNative: boolean,
     currentLat?: number,
     currentLng?: number,
-  ): { score: number; reasons: string[] } => {
-    let score = 0;
-    const reasons: string[] = [];
+  ): boolean => {
+    if (isMockedFromNative) return true;
+    if (accuracy !== undefined && accuracy === 0) return true;
 
-    // ① Native layer أكد الـ mock → نقاط كاملة
-    if (isMockedFromNative) {
-      score += 100;
-      reasons.push("NATIVE_IS_MOCKED");
-    }
-
-    if (accuracy !== undefined) {
-      // accuracy = 0 مستحيل في GPS حقيقي
-      if (accuracy === 0) {
-        score += 50;
-        reasons.push("ACCURACY_ZERO");
-      }
-      // ② accuracy رقم صحيح صغير جداً ≤ 10 — معظم Mock apps تستخدم 1, 3, 5, 8
-      else if (accuracy <= 10 && Number.isInteger(accuracy)) {
-        score += 25;
-        reasons.push(`ACCURACY_TINY_INTEGER_${accuracy}`);
-      }
-    }
-
-    // ③ فحص ثبات الموقع الجغرافي — أقوى مؤشر للـ Fake GPS
-    // GPS حقيقي يتحرك دائماً حتى لو المستخدم واقف (±2-5 متر)
+    // فحص ثبات الموقع الجغرافي — أقوى مؤشر للـ Fake GPS
     if (currentLat !== undefined && currentLng !== undefined) {
       const recent = recentPositionsRef.current;
       recent.push({ lat: currentLat, lng: currentLng });
       if (recent.length > 6) recent.shift();
 
       if (recent.length >= 5) {
-        // لو آخر 5 مواقع في نفس الإحداثية بالضبط → Fake GPS
         const allSameLat = recent.every(p => p.lat === recent[0].lat);
         const allSameLng = recent.every(p => p.lng === recent[0].lng);
-        if (allSameLat && allSameLng) {
-          score += 50;
-          reasons.push("POSITION_FROZEN_5_READINGS");
-        }
-        // لو الإحداثيات تتغير بأقل من 0.000001 درجة (≈ 11 سم) — مريب جداً
-        else {
-          const latRange = Math.max(...recent.map(p => p.lat)) - Math.min(...recent.map(p => p.lat));
-          const lngRange = Math.max(...recent.map(p => p.lng)) - Math.min(...recent.map(p => p.lng));
-          if (latRange < 0.000001 && lngRange < 0.000001) {
-            score += 35;
-            reasons.push("POSITION_NEAR_FROZEN_5_READINGS");
-          }
-        }
+        if (allSameLat && allSameLng) return true;
       }
     }
 
-    return { score, reasons };
+    return false;
   };
 
-  // ── مخزن آخر 6 مواقع جغرافية لكشف ثبات الموقع ─────────────────────────
   const recentPositionsRef = useRef<{ lat: number; lng: number }[]>([]);
 
   // ── Handle a position update ───────────────────────────────────────────────
@@ -372,17 +346,10 @@ export function useGeofence() {
     accuracy?: number,
     isMocked?: boolean,
   ) => {
-    // ── حساب نقاط الشك في الـ JS layer ──────────────────────────────────
-    // نمرر الإحداثيات الحالية لفحص ثبات الموقع (أقوى مؤشر على Fake GPS)
-    const { score: totalJsScore, reasons: allJsReasons } = calcJsSuspicion(
-      accuracy, !!isMocked, currentLat, currentLng
-    );
-
-    // عتبة الكشف في الـ JS Layer: 30 نقطة (أقل من الـ Native 50)
-    // لأن الـ JS Layer دعم إضافي وليس الحكم الرئيسي
-    const detectedMock = totalJsScore >= 30;
+    const detectedMock = checkIsMocked(accuracy, !!isMocked, currentLat, currentLng);
     globalMockedStatus = detectedMock;
-    setLatestLocation({ lat: currentLat, lon: currentLng, isMocked: detectedMock, suspicionScore: totalJsScore, mockReasons: allJsReasons });
+    
+    setLatestLocation({ lat: currentLat, lon: currentLng, isMocked: detectedMock });
     if (historyLoadingRef.current) return;
 
     // 1. احفظ نقطة الـ GPS في الـ queue
@@ -487,8 +454,6 @@ export function useGeofence() {
               latitude: currentLat.toString(),
               longitude: currentLng.toString(),
               isMocked: detectedMock,
-              suspicionScore: totalJsScore,
-              mockReasons: allJsReasons,
             });
             toast.success(`✅ تسجيل دخول تلقائي في ${branch.name}`);
             refetchHistoryRef.current();
@@ -515,8 +480,6 @@ export function useGeofence() {
             checkInAt: new Date().toISOString(),
             localId,
             isMocked: detectedMock,
-            suspicionScore: totalJsScore,
-            mockReasons: allJsReasons,
           });
           await setPendingVisits(pending);
           toast.success(`✅ دخول مؤقت في ${branch.name} — سيُرسل لما النت يرجع`);

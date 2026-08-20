@@ -5,7 +5,7 @@ import { InsertUser, users } from "../drizzle/schema";
 
 // ── Connection Pool (يحل مشكلة الـ timeout من Railway) ──────────────────────
 let _pool: mysql.Pool | null = null;
-let _db: ReturnType<typeof drizzle> | null = null;
+let _db: any = null;
 
 function createPool() {
   if (!process.env.DATABASE_URL) return null;
@@ -27,12 +27,12 @@ function createPool() {
   }
 }
 
-export async function getDb() {
+export async function getDb(): Promise<any> {
   if (!_db) {
     if (!_pool) _pool = createPool();
     if (_pool) {
       try {
-        _db = drizzle(_pool);
+        _db = drizzle(_pool) as any;
         console.log("[Database] ✅ Pool connected");
       } catch (error) {
         console.warn("[Database] Failed to init drizzle:", error);

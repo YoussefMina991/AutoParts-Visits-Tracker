@@ -22,9 +22,9 @@ import { useGeofence } from "./hooks/useGeofence";
 import { LocationPermissionGuide } from "./components/LocationPermissionGuide";
 import { useLocationPermissionState } from "./hooks/useLocationPermission";
 import { Capacitor } from "@capacitor/core";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect } from "react";
 import { ManagerBottomNav } from "./components/ManagerBottomNav";
-
+import { LocalNotifications } from "@capacitor/local-notifications";
 // ── Geofence Context — share the single GPS watcher with all pages ─────────
 interface GeofenceContextValue {
   latestLocation: { lat: number; lon: number; isMocked: boolean } | null;
@@ -39,6 +39,13 @@ function ManagerGeofenceProvider({ children }: { children: React.ReactNode }) {
 
   const { shouldShow, dismiss } = useLocationPermissionState();
   const showGuide = shouldShow && Capacitor.isNativePlatform();
+
+  // Request Notification Permissions on mount
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      LocalNotifications.requestPermissions().catch(console.error);
+    }
+  }, []);
 
   return (
     <GeofenceContext.Provider value={{ latestLocation }}>

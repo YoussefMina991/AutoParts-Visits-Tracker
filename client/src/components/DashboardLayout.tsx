@@ -75,9 +75,9 @@ function NotificationBell() {
   }, []);
 
   const markAllSeen = () => {
-    const newSeen = new Set([...seenIds, ...mockedVisits.map((v: any) => v.id)]);
+    const newSeen = new Set([...Array.from(seenIds), ...mockedVisits.map((v: any) => v.id)]);
     setSeenIds(newSeen);
-    localStorage.setItem("notif_seen_ids", JSON.stringify([...newSeen]));
+    localStorage.setItem("notif_seen_ids", JSON.stringify(Array.from(newSeen)));
   };
 
   const handleOpen = () => {
