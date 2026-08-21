@@ -1,10 +1,10 @@
 import { Link, useLocation } from "wouter";
 
 const NAV_ITEMS = [
-  { icon: "dashboard",   label: "الرئيسية", path: "/" },
-  { icon: "location_on", label: "تسجيل",    path: "/check-in" },
-  { icon: "history",     label: "التاريخ",  path: "/history" },
-  { icon: "cloud_sync",  label: "مزامنة",   path: "/sync" },
+  { icon: "home",          label: "Home",      path: "/" },
+  { icon: "location_on",   label: "Check-in",  path: "/check-in" },
+  { icon: "history",       label: "History",   path: "/history" },
+  { icon: "sync",          label: "Sync",      path: "/sync" },
 ];
 
 export function ManagerBottomNav() {
@@ -14,46 +14,59 @@ export function ManagerBottomNav() {
     <nav
       className="fixed bottom-0 left-0 right-0 z-50"
       style={{
-        background: "oklch(0.13 0.025 256 / 0.95)",
-        borderTop: "1px solid oklch(0.82 0.15 200 / 0.12)",
+        background: "rgba(17, 20, 23, 0.95)",
         backdropFilter: "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
       }}
     >
-      <div className="flex justify-around items-center h-16 px-2 max-w-md mx-auto">
+      <div className="flex justify-around items-center h-16 px-4 max-w-md mx-auto">
         {NAV_ITEMS.map((item) => {
           const active = location === item.path || (item.path === "/" && location === "/dashboard");
           return (
             <Link key={item.path} href={item.path}>
               <a
-                className="flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all cursor-pointer"
-                style={{
-                  background: active ? "oklch(0.82 0.15 200 / 0.12)" : "transparent",
-                }}
+                className="flex flex-col items-center justify-center cursor-pointer relative"
+                style={{ width: "64px", height: "100%" }}
               >
+                {/* Active Indicator Background */}
+                {active && (
+                  <div 
+                    style={{
+                      position: "absolute",
+                      width: "48px",
+                      height: "48px",
+                      borderRadius: "50%",
+                      background: "rgba(15, 165, 248, 0.15)",
+                      zIndex: 0
+                    }}
+                  />
+                )}
+                
                 <span
                   className="material-symbols-outlined"
                   style={{
-                    fontSize: 22,
-                    color: active ? "oklch(0.82 0.15 200)" : "oklch(0.6 0.03 256)",
+                    fontSize: 24,
+                    color: active ? "#0fa5f8" : "rgba(255, 255, 255, 0.4)",
                     fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0",
-                    filter: active ? "drop-shadow(0 0 6px oklch(0.82 0.15 200 / 0.6))" : "none",
                     transition: "all 0.2s ease",
+                    zIndex: 1
                   }}
                 >
                   {item.icon}
                 </span>
-                <span
+                {/* <span
                   style={{
-                    fontSize: 9,
-                    fontWeight: 700,
-                    letterSpacing: "0.04em",
-                    color: active ? "oklch(0.82 0.15 200)" : "oklch(0.5 0.03 256)",
+                    fontSize: 10,
+                    fontWeight: 500,
+                    marginTop: 4,
+                    color: active ? "#0fa5f8" : "rgba(255, 255, 255, 0.4)",
                     transition: "color 0.2s ease",
+                    zIndex: 1
                   }}
                 >
                   {item.label}
-                </span>
+                </span> */}
               </a>
             </Link>
           );

@@ -8,7 +8,7 @@ import { verifyPassword } from "../auth";
 export function registerOAuthRoutes(app: Express) {
   // POST /api/auth/login — username + password login
   app.post("/api/auth/login", async (req: Request, res: Response) => {
-    const { username, password } = req.body ?? {};
+    const { username, password, platform } = req.body ?? {};
 
     if (!username || !password) {
       res.status(400).json({ error: "username and password are required" });
@@ -19,6 +19,17 @@ export function registerOAuthRoutes(app: Express) {
       const user = await db.getUserByUsername(username);
       if (!user) {
         res.status(401).json({ error: "Invalid credentials" });
+        return;
+      }
+
+      // Platform role separation logic
+      if (user.role === "admin" && platform === "mobile") {
+        res.status(403).json({ error: "غير مصرح للمدير العام الدخول من تطبيق الموبايل" });
+        return;
+      }
+      
+      if (user.role === "manager" && platform !== "mobile") {
+        res.status(403).json({ error: "حساب المدير مخصص فقط لتطبيق الموبايل" });
         return;
       }
 

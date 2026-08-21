@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import localforage from "localforage";
 
-// ─── Offline stores (same as useGeofence.ts) ─────────────────────────────────
+// ─── Offline stores ─────────────────────────────────
 const locationStore = localforage.createInstance({
   name: "branch-tracker",
   storeName: "offline_locations",
@@ -35,16 +35,6 @@ interface VaultItem {
   payloadCount?: number;
 }
 
-function VaultIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <rect x="3" y="4" width="18" height="16" rx="3" />
-      <circle cx="12" cy="12" r="3.2" />
-      <path d="M12 12v3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 export function OfflineVault() {
   const [items, setItems] = useState<VaultItem[]>([]);
   const [gpsPoints, setGpsPoints] = useState(0);
@@ -65,7 +55,7 @@ export function OfflineVault() {
         vaultItems.push({
           id: "gps",
           type: "gps",
-          branchName: "GPS trail",
+          branchName: "GPS Trail Tracking",
           recordedAt: locs.length > 0 ? locs[0].timestamp.slice(11, 16) : "",
           payloadCount: locs.length,
         });
@@ -79,89 +69,229 @@ export function OfflineVault() {
     return () => clearInterval(interval);
   }, []);
 
-  if (items.length === 0) {
-    return (
-      <section className="w-full px-4 mt-4 pb-4" aria-label="Offline vault">
-        <div className="rounded-3xl border border-[var(--color-glass-border)] bg-[oklch(0.27_0.035_256/0.3)] p-6 text-center">
-          <p className="font-mono text-xs uppercase tracking-wider text-[var(--color-neon)]">
-            All synced ✓
-          </p>
-          <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
-            No pending offline data
-          </p>
-        </div>
-      </section>
-    );
-  }
-
   return (
-    <section className="w-full px-4 mt-4 pb-4" aria-label="Offline data vault">
-      <div className="relative overflow-hidden rounded-3xl border border-[var(--color-glass-border)] bg-[radial-gradient(120%_120%_at_50%_0%,oklch(0.7_0.16_300/0.14),transparent_60%)] p-6">
-        {/* Ambient glow */}
-        <div className="pointer-events-none absolute -top-16 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-[oklch(0.7_0.16_300/0.2)] blur-3xl" />
+    <>
+      <style>{`
+        .vault-container {
+          padding: 0 24px;
+          position: relative;
+          z-index: 1;
+        }
 
-        <div className="relative flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="animate-float-soft flex h-12 w-12 items-center justify-center rounded-2xl bg-[oklch(0.7_0.16_300/0.15)] text-[oklch(0.7_0.16_300)] shadow-[0_0_24px_-6px_oklch(0.7_0.16_300/0.9)]">
-              <VaultIcon />
+        .vault-card {
+          background: rgba(30, 34, 40, 0.6);
+          border: 1px solid rgba(255,255,255,0.05);
+          border-radius: 20px;
+          padding: 24px;
+          margin-bottom: 24px;
+        }
+
+        .vault-header {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 20px;
+        }
+
+        .vault-icon-wrapper {
+          width: 48px;
+          height: 48px;
+          border-radius: 12px;
+          background: rgba(15,165,248,0.1);
+          color: #0fa5f8;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .vault-header h2 {
+          font-size: 16px;
+          font-weight: 600;
+          margin: 0 0 4px 0;
+          color: #ffffff;
+        }
+
+        .vault-header p {
+          font-size: 12px;
+          color: rgba(255,255,255,0.5);
+          margin: 0;
+        }
+
+        .status-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          border-radius: 8px;
+          font-size: 11px;
+          font-weight: 500;
+          margin-left: auto;
+        }
+        .status-badge.synced {
+          background: rgba(52,211,153,0.1);
+          color: #34d399;
+        }
+        .status-badge.queued {
+          background: rgba(245, 158, 11, 0.1);
+          color: #f59e0b;
+        }
+        .status-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+        }
+        .status-dot.synced { background: #34d399; }
+        .status-dot.queued { background: #f59e0b; }
+
+        .items-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-top: 20px;
+        }
+
+        .vault-item {
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.02);
+          border-radius: 12px;
+          padding: 12px 16px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        
+        .item-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          background: rgba(15,165,248,0.1);
+          color: #0fa5f8;
+          font-size: 10px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .item-content {
+          flex: 1;
+        }
+        .item-content h4 {
+          font-size: 13px;
+          font-weight: 500;
+          color: #fff;
+          margin: 0 0 2px 0;
+        }
+        .item-content p {
+          font-size: 11px;
+          color: rgba(255,255,255,0.5);
+          margin: 0;
+        }
+
+        .item-meta {
+          font-size: 11px;
+          color: rgba(15,165,248,0.8);
+          font-weight: 500;
+        }
+
+        .auto-sync-banner {
+          margin-top: 24px;
+          background: rgba(15,165,248,0.05);
+          border: 1px solid rgba(15,165,248,0.1);
+          border-radius: 12px;
+          padding: 16px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        
+        .sync-progress-bar {
+          flex: 1;
+          height: 4px;
+          background: rgba(255,255,255,0.1);
+          border-radius: 2px;
+          position: relative;
+          overflow: hidden;
+        }
+        .sync-progress-fill {
+          position: absolute;
+          top: 0;
+          left: 0;
+          height: 100%;
+          width: 30%;
+          background: #0fa5f8;
+          border-radius: 2px;
+          animation: slideRight 2s infinite ease-in-out;
+        }
+        
+        @keyframes slideRight {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(400%); }
+        }
+
+        .sync-status-text {
+          font-size: 11px;
+          color: #0fa5f8;
+          font-weight: 500;
+        }
+      `}</style>
+
+      <div className="vault-container">
+        <div className="vault-card">
+          <div className="vault-header">
+            <div className="vault-icon-wrapper">
+              <span className="material-symbols-outlined">cloud_off</span>
             </div>
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[oklch(0.7_0.16_300/0.8)]">
-                Secure vault
-              </p>
-              <h2 className="text-lg font-semibold leading-tight text-[oklch(0.96_0.008_250)]" style={{ fontFamily: "var(--font-display)" }}>
-                Safely stored offline
-              </h2>
+              <h2>Offline Storage</h2>
+              <p>Safe & secure data vault</p>
             </div>
-          </div>
-          <span className="flex items-center gap-1.5 rounded-full bg-[oklch(0.27_0.035_256/0.7)] px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-[var(--color-muted-foreground)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-muted-foreground)]/60" />
-            Queued
-          </span>
-        </div>
-
-        <p className="relative mt-4 text-sm leading-relaxed text-[var(--color-muted-foreground)]">
-          {items.filter((i) => i.type !== "gps").length} events
-          {gpsPoints > 0 && ` and ${gpsPoints.toLocaleString()} GPS points`}{" "}
-          are stored on your device. They'll sync automatically when you're back online.
-        </p>
-
-        {/* Items */}
-        <ul className="relative mt-5 flex flex-col gap-2">
-          {items.map((item, i) => (
-            <li
-              key={item.id}
-              className="animate-float-soft flex items-center gap-3 rounded-2xl bg-[oklch(0.22_0.03_256/0.6)] px-3.5 py-2.5"
-              style={{ animationDelay: `${i * 0.6}s`, animationDuration: "5s" }}
-            >
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[oklch(0.7_0.16_300/0.1)] font-mono text-[10px] font-semibold uppercase text-[oklch(0.7_0.16_300)]">
-                {item.type === "gps" ? "GPS" : item.type === "check-in" ? "IN" : "OUT"}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[oklch(0.96_0.008_250)]">
-                  {item.type === "check-in" ? "Check-in" : item.type === "check-out" ? "Check-out" : "GPS trail"}
-                </p>
-                <p className="truncate text-xs text-[var(--color-muted-foreground)]">{item.branchName}</p>
+            {items.length === 0 ? (
+              <div className="status-badge synced">
+                <span className="status-dot synced" /> All Synced
               </div>
-              <div className="text-right">
-                {item.payloadCount && (
-                  <p className="font-mono text-[10px] text-[oklch(0.7_0.16_300/0.8)]">{item.payloadCount} pts</p>
-                )}
+            ) : (
+              <div className="status-badge queued">
+                <span className="status-dot queued" /> {items.length} Queued
               </div>
-            </li>
-          ))}
-        </ul>
-
-        {/* Auto-sync bar */}
-        <div className="relative mt-5 flex items-center gap-3 rounded-2xl bg-[oklch(0.27_0.035_256/0.5)] px-4 py-3">
-          <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-[oklch(0_0_0/0.3)]">
-            <div className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-gradient-to-r from-[oklch(0.7_0.16_300)] to-[oklch(0.82_0.15_200)] [animation:shimmer_2.4s_ease-in-out_infinite]" />
+            )}
           </div>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--color-muted-foreground)]">
-            Auto-sync armed
-          </span>
+
+          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, margin: 0 }}>
+            {items.length === 0 
+              ? "Your device is fully synced with the cloud. No pending offline data." 
+              : `${items.filter((i) => i.type !== "gps").length} events and ${gpsPoints.toLocaleString()} GPS points are stored safely on your device.`}
+          </p>
+
+          {items.length > 0 && (
+            <div className="items-list">
+              {items.map((item) => (
+                <div key={item.id} className="vault-item">
+                  <div className="item-icon">
+                    {item.type === "gps" ? "GPS" : item.type === "check-in" ? "IN" : "OUT"}
+                  </div>
+                  <div className="item-content">
+                    <h4>{item.type === "check-in" ? "Check-in" : item.type === "check-out" ? "Check-out" : "GPS Trail"}</h4>
+                    <p>{item.branchName}</p>
+                  </div>
+                  {item.payloadCount && (
+                    <div className="item-meta">{item.payloadCount} pts</div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {items.length > 0 && (
+            <div className="auto-sync-banner">
+              <div className="sync-progress-bar">
+                <div className="sync-progress-fill" />
+              </div>
+              <span className="sync-status-text">Auto-sync armed</span>
+            </div>
+          )}
         </div>
       </div>
-    </section>
+    </>
   );
 }

@@ -3,30 +3,63 @@ import { OfflineVault } from "@/components/OfflineVault";
 
 export default function SyncPage() {
   return (
-    <div className="relative min-h-screen bg-[#0b1326] text-[oklch(0.96_0.008_250)]">
-      <div
-        className="pointer-events-none fixed inset-0 -z-10"
-        aria-hidden="true"
-        style={{
-          backgroundImage: [
-            "radial-gradient(60rem 40rem at 15% -10%, oklch(0.82 0.15 200 / 0.1), transparent 60%)",
-            "radial-gradient(50rem 40rem at 100% 0%, oklch(0.7 0.16 300 / 0.09), transparent 55%)",
-          ].join(", "),
-          backgroundAttachment: "fixed",
-        }}
-      />
-      <AmbientStatusBar />
-      <main className="mx-auto w-full max-w-md pb-28 pt-4">
-        <div className="px-4">
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[oklch(0.7_0.16_300/0.8)]">
-            Offline Storage
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold text-[oklch(0.96_0.008_250)]" style={{ fontFamily: "var(--font-display)" }}>
-            Data Vault
-          </h1>
-        </div>
-        <OfflineVault />
-      </main>
-    </div>
+    <>
+      <style>{`
+        .blue-dot-sync-page {
+          min-height: 100svh;
+          background-color: #111417; /* Deep black/gray */
+          color: #ffffff;
+          font-family: 'Inter', 'Fira Sans', sans-serif;
+          position: relative;
+          overflow-y: auto;
+          overflow-x: hidden;
+          padding-bottom: 100px;
+        }
+
+        .sync-glow {
+          position: absolute;
+          top: -100px;
+          left: -50px;
+          width: 300px;
+          height: 300px;
+          background: radial-gradient(circle, rgba(15,165,248,0.2) 0%, rgba(15,165,248,0) 70%);
+          border-radius: 50%;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        .sync-header {
+          padding: 40px 24px 20px;
+          position: relative;
+          z-index: 1;
+        }
+
+        .sync-header h1 {
+          font-size: 28px;
+          font-weight: 700;
+          margin: 0 0 4px 0;
+          letter-spacing: -0.02em;
+        }
+
+        .sync-header p {
+          font-size: 12px;
+          color: rgba(255,255,255,0.5);
+          margin: 0;
+        }
+      `}</style>
+      <div className="blue-dot-sync-page">
+        <div className="sync-glow" />
+        <AmbientStatusBar />
+        
+        <header className="sync-header">
+          <h1>Sync Center</h1>
+          <p>Manage your offline visits and GPS data</p>
+        </header>
+
+        <main className="mx-auto w-full max-w-md">
+          <OfflineVault />
+        </main>
+      </div>
+    </>
   );
 }

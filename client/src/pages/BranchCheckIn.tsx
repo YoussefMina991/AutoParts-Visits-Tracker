@@ -2,16 +2,16 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { getDistanceMeters } from "../../../shared/utils";
-import { AmbientStatusBar } from "@/components/AmbientStatusBar";
 import { useGeofenceContext } from "@/App";
+import { Link } from "wouter";
+import { Loader2 } from "lucide-react";
 
 export default function BranchCheckIn() {
-  const [view, setView] = useState<"list" | "map">("list");
+  const [view, setView] = useState<"list" | "map">("map");
 
-  // ✅ Reuse the single GPS watcher from GeofenceContext — no duplicate watchPosition
   const { latestLocation } = useGeofenceContext();
   const gpsLocation = latestLocation ? { lat: latestLocation.lat, lon: latestLocation.lon } : null;
-  const globalMockedStatus  = latestLocation?.isMocked      ?? false;
+  const globalMockedStatus  = latestLocation?.isMocked ?? false;
 
   const { data: assignedBranches = [] } = trpc.manager.getMyBranches.useQuery();
   const { data: visitsData, refetch: refetchVisits } = trpc.visit.myHistory.useQuery({ limit: 5, offset: 0 });
@@ -38,10 +38,10 @@ export default function BranchCheckIn() {
         longitude: gpsLocation.lon.toString(),
         isMocked: globalMockedStatus,
       });
-      toast.success(`✅ تسجيل دخول ناجح في ${sortedBranches.find(b=>b.id===branchId)?.name ?? "الفرع"}`);
+      toast.success(`✅ Check-in successful at ${sortedBranches.find(b=>b.id===branchId)?.name}`);
       refetchVisits();
     } catch (err: any) {
-      toast.error(`❌ فشل الدخول: ${err.message || String(err)}`);
+      toast.error(`❌ Check-in failed: ${err.message || String(err)}`);
     }
   };
 
@@ -49,210 +49,298 @@ export default function BranchCheckIn() {
     if (!activeVisit) return;
     try {
       await checkOutMutation.mutateAsync({ visitId: activeVisit.id });
-      toast.success("🔴 تسجيل خروج يدوي ناجح!");
+      toast.success("🔴 Check-out successful!");
       refetchVisits();
     } catch (err: any) {
-      toast.error(`❌ فشل الخروج: ${err.message || String(err)}`);
+      toast.error(`❌ Check-out failed: ${err.message || String(err)}`);
     }
   };
 
   return (
-    <div className="relative min-h-screen bg-[#0b1326] text-[oklch(0.96_0.008_250)]">
-      <div
-        className="pointer-events-none fixed inset-0 -z-10"
-        aria-hidden="true"
-        style={{
-          backgroundImage: [
-            "radial-gradient(60rem 40rem at 15% -10%, oklch(0.82 0.15 200 / 0.1), transparent 60%)",
-            "radial-gradient(50rem 40rem at 100% 0%, oklch(0.7 0.16 300 / 0.09), transparent 55%)",
-          ].join(", "),
-          backgroundAttachment: "fixed",
-        }}
-      />
-      <AmbientStatusBar />
+    <>
+      <style>{`
+        .blue-dot-map-page {
+          min-height: 100svh;
+          background-color: #0b1326; /* Deep dark blue map background */
+          color: #ffffff;
+          font-family: 'Inter', 'Fira Sans', sans-serif;
+          position: relative;
+          overflow: hidden;
+        }
 
-      <main className="mx-auto flex w-full max-w-md flex-col gap-4 px-5 pb-28 pt-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ fontFamily: "var(--font-display)" }}>
-              Assigned Branches
-            </h1>
-            <p className="text-sm text-[var(--color-muted-foreground)]">
-              {assignedBranches.length} locations · live distances
-            </p>
-          </div>
-        </div>
+        /* Fake Map Grid Background */
+        .map-grid-bg {
+          position: absolute;
+          inset: 0;
+          background-image: 
+            linear-gradient(rgba(15,165,248,0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(15,165,248,0.05) 1px, transparent 1px);
+          background-size: 40px 40px;
+          z-index: 0;
+        }
 
-        {/* toggle */}
-        <div className="glass grid grid-cols-2 gap-1 rounded-2xl p-1">
-          <button
-            type="button"
-            onClick={() => setView("list")}
-            className={`flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors ${
-              view === "list"
-                ? "bg-[oklch(0.82_0.15_200)] text-[oklch(0.17_0.03_256)] shadow-lg shadow-[oklch(0.82_0.15_200/0.2)]"
-                : "text-[var(--color-muted-foreground)]"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">list</span> List View
+        .map-glow {
+          position: absolute;
+          top: 30%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 500px;
+          height: 500px;
+          background: radial-gradient(circle, rgba(15,165,248,0.15) 0%, rgba(15,165,248,0) 60%);
+          border-radius: 50%;
+          pointer-events: none;
+          z-index: 0;
+        }
+
+        /* Top Bar */
+        .top-bar {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 60px;
+          padding: 0 20px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          z-index: 10;
+          background: linear-gradient(to bottom, rgba(11,19,38,0.8), transparent);
+        }
+        .top-bar-title {
+          font-size: 16px;
+          font-weight: 600;
+        }
+
+        .icon-btn {
+          width: 40px;
+          height: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 50%;
+          background: rgba(30,34,40,0.6);
+          border: 1px solid rgba(255,255,255,0.05);
+          color: #fff;
+          cursor: pointer;
+        }
+
+        /* Floating Action Sidebar (Right) */
+        .floating-sidebar {
+          position: absolute;
+          right: 20px;
+          top: 50%;
+          transform: translateY(-50%);
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          z-index: 10;
+        }
+        .sidebar-btn {
+          width: 44px;
+          height: 44px;
+          border-radius: 12px;
+          background: rgba(30, 34, 40, 0.85);
+          border: 1px solid rgba(255,255,255,0.05);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+          backdrop-filter: blur(8px);
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+        .sidebar-btn:hover {
+          background: rgba(30, 34, 40, 1);
+        }
+
+        /* Pins */
+        .map-pin {
+          position: absolute;
+          transform: translate(-50%, -50%);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+          z-index: 5;
+        }
+        .pin-marker {
+          width: 32px;
+          height: 32px;
+          background: #0fa5f8;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #fff;
+          box-shadow: 0 4px 12px rgba(15,165,248,0.4);
+          border: 2px solid #fff;
+        }
+        .pin-marker.user-pin {
+          background: #34d399; /* Green for user/car */
+          box-shadow: 0 4px 12px rgba(52,211,153,0.4);
+        }
+        
+        /* Bottom Info Card */
+        .bottom-card-container {
+          position: absolute;
+          bottom: 90px; /* Above bottom nav */
+          left: 0;
+          right: 0;
+          padding: 0 20px;
+          z-index: 10;
+        }
+
+        .check-in-card {
+          background: rgba(30, 34, 40, 0.95);
+          backdrop-filter: blur(12px);
+          border: 1px solid rgba(255,255,255,0.05);
+          border-radius: 24px;
+          padding: 24px;
+          box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        }
+
+        .card-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 20px;
+        }
+        
+        .branch-info h2 {
+          font-size: 18px;
+          font-weight: 600;
+          margin: 0 0 4px 0;
+        }
+        .branch-info p {
+          font-size: 12px;
+          color: rgba(255,255,255,0.5);
+          margin: 0;
+        }
+
+        .action-button {
+          width: 100%;
+          height: 52px;
+          border-radius: 12px;
+          font-size: 15px;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          border: none;
+          cursor: pointer;
+          transition: transform 0.2s;
+        }
+        .action-button:active {
+          transform: scale(0.98);
+        }
+        .btn-cyan {
+          background: #0fa5f8;
+          color: #fff;
+        }
+        .btn-red {
+          background: rgba(239, 68, 68, 0.15);
+          color: #ef4444;
+          border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+      `}</style>
+
+      <div className="blue-dot-map-page">
+        <div className="map-grid-bg" />
+        <div className="map-glow" />
+
+        {/* Top Bar */}
+        <div className="top-bar">
+          <Link href="/">
+            <a className="icon-btn">
+              <span className="material-symbols-outlined">arrow_back</span>
+            </a>
+          </Link>
+          <div className="top-bar-title">Locations</div>
+          <button className="icon-btn">
+            <span className="material-symbols-outlined">search</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setView("map")}
-            className={`flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors ${
-              view === "map"
-                ? "bg-[oklch(0.82_0.15_200)] text-[oklch(0.17_0.03_256)] shadow-lg shadow-[oklch(0.82_0.15_200/0.2)]"
-                : "text-[var(--color-muted-foreground)]"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">map</span> Map View
+        </div>
+
+        {/* Floating Right Sidebar */}
+        <div className="floating-sidebar">
+          <button className="sidebar-btn" onClick={() => setView(view === "list" ? "map" : "list")}>
+            <span className="material-symbols-outlined">{view === "list" ? "map" : "list"}</span>
+          </button>
+          <button className="sidebar-btn">
+            <span className="material-symbols-outlined">tune</span>
+          </button>
+          <button className="sidebar-btn">
+            <span className="material-symbols-outlined">my_location</span>
           </button>
         </div>
 
-        {/* GPS status indicator - neutral, no mock hint */}
-        {gpsLocation && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-[oklch(0.82_0.15_200/0.08)] border border-[oklch(0.82_0.15_200/0.15)]">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-[var(--color-neon)] opacity-60 animate-live-blink" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--color-neon)]" />
-            </span>
-            <p className="text-[oklch(0.82_0.15_200)] text-xs font-medium">GPS نشط — دقة التحديد جيدة</p>
-          </div>
-        )}
-
-        {/* Manual Check-In/Out Controls (Fallback/Debug) */}
-        <div className="glass rounded-2xl p-4 flex flex-col gap-3 mt-2 mb-4">
-          <p className="text-sm text-[var(--color-muted-foreground)]">تسجيل الدخول اليدوي</p>
-          {activeVisit ? (
-            <button
-              onClick={handleManualCheckOut}
-              disabled={checkOutMutation.isPending}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-red-500/20 px-4 py-3 text-red-400 font-medium active:scale-95"
-            >
-              <span className="material-symbols-outlined">logout</span>
-              {checkOutMutation.isPending ? "جاري الخروج..." : "تسجيل الخروج الآن"}
-            </button>
-          ) : (
-            <button
-              onClick={() => closestBranch && handleManualCheckIn(closestBranch.id)}
-              disabled={!closestBranch || checkInMutation.isPending}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[oklch(0.82_0.15_200/0.2)] px-4 py-3 text-[oklch(0.82_0.15_200)] font-medium active:scale-95"
-            >
-              <span className="material-symbols-outlined">login</span>
-              {checkInMutation.isPending ? "جاري الدخول..." : (closestBranch ? `تسجيل الدخول: ${closestBranch.name}` : "لا يوجد فروع")}
-            </button>
-          )}
-        </div>
-
-        {view === "list" ? (
-          <ul className="flex flex-col gap-2.5">
-            {sortedBranches.map((b) => (
-              <li key={b.id} className="glass flex items-center gap-3.5 rounded-2xl p-4">
-                <div
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
-                    b.status === "visited"
-                      ? "bg-[oklch(0.82_0.15_200/0.15)] text-[oklch(0.82_0.15_200)]"
-                      : "bg-[oklch(0.27_0.035_256/0.6)] text-[var(--color-muted-foreground)]"
-                  }`}
-                >
-                  <span className="material-symbols-outlined">location_on</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{b.name}</p>
-                  <p className="truncate text-xs text-[var(--color-muted-foreground)]">{b.address}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1.5">
-                  <span className="flex items-center gap-1 font-mono text-sm">
-                    <span className="material-symbols-outlined text-[14px] text-[oklch(0.82_0.15_200)]">navigation</span>
-                    {b.distanceM === Infinity
-                      ? "-- m"
-                      : b.distanceM < 1000
-                      ? `${Math.round(b.distanceM)} m`
-                      : `${(b.distanceM / 1000).toFixed(1)} km`}
-                  </span>
-                  {b.status === "visited" ? (
-                    <span className="flex items-center gap-1 text-[11px] text-[var(--color-neon)]">
-                      <span className="material-symbols-outlined text-[12px]">check_circle</span> Visited
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-[11px] text-[var(--color-muted-foreground)]">
-                      <span className="material-symbols-outlined text-[12px]">radio_button_unchecked</span> Pending
-                    </span>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="glass relative aspect-square w-full overflow-hidden rounded-3xl p-4">
-            {/* grid rings */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              {[0.95, 0.72, 0.48, 0.24].map((r) => (
-                <span
-                  key={r}
-                  className="absolute rounded-full border border-[oklch(0.82_0.15_200/0.15)]"
-                  style={{ width: `${r * 100}%`, height: `${r * 100}%` }}
-                />
-              ))}
-              {/* crosshairs */}
-              <span className="absolute h-px w-full bg-[oklch(0.82_0.15_200/0.1)]" />
-              <span className="absolute h-full w-px bg-[oklch(0.82_0.15_200/0.1)]" />
-              {/* sweep */}
-              <span
-                className="absolute h-[95%] w-[95%] rounded-full animate-radar-sweep"
-                style={{
-                  background:
-                    "conic-gradient(from 0deg, transparent 0deg, transparent 310deg, oklch(0.82 0.15 200) 360deg)",
-                  maskImage: "radial-gradient(circle, transparent 8%, black 9%)",
-                  WebkitMaskImage: "radial-gradient(circle, transparent 8%, black 9%)",
-                  opacity: 0.3,
-                }}
-              />
+        {/* Map Pins Simulation */}
+        {view === "map" && (
+          <>
+            {/* User Pin */}
+            <div className="map-pin" style={{ left: "50%", top: "75%" }}>
+              <div className="pin-marker user-pin">
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>person</span>
+              </div>
             </div>
 
-            {/* center = you */}
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              <span className="relative flex h-4 w-4 items-center justify-center">
-                <span className="absolute inline-flex h-full w-full animate-ping-ring rounded-full bg-[var(--color-neon)] opacity-60" />
-                <span className="relative h-3 w-3 rounded-full bg-[var(--color-neon)] shadow-[0_0_12px_3px_var(--color-neon)]" />
-              </span>
-            </div>
-
-            {/* branch blips */}
-            {sortedBranches.slice(0, 5).map((b, i) => {
-              const angle = (i / 5) * 360 + 45; // pseudo angle
-              const radius = Math.min((b.distanceM / 5000) * 0.9, 0.9); // max out at 90%
-              const rad = (angle * Math.PI) / 180;
-              const x = 50 + Math.cos(rad) * radius * 46;
-              const y = 50 + Math.sin(rad) * radius * 46;
+            {/* Branches Pins */}
+            {sortedBranches.slice(0, 3).map((b, i) => {
+              const positions = [
+                { left: "30%", top: "40%" },
+                { left: "70%", top: "25%" },
+                { left: "80%", top: "55%" },
+              ];
               return (
-                <div
-                  key={b.id}
-                  className="absolute -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: `${x}%`, top: `${y}%` }}
-                >
-                  <span
-                    className={`flex h-7 w-7 items-center justify-center rounded-full border ${
-                      b.status === "visited"
-                        ? "border-[var(--color-neon)]/40 bg-[var(--color-neon)]/20 text-[var(--color-neon)]"
-                        : "border-[oklch(0.82_0.15_200)]/40 bg-[oklch(0.82_0.15_200)]/20 text-[oklch(0.82_0.15_200)]"
-                    }`}
-                  >
-                    <span className="material-symbols-outlined text-[14px]">location_on</span>
-                  </span>
-                  <span className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-[oklch(0.17_0.028_256/0.7)] px-1.5 py-0.5 text-[9px] text-[oklch(0.96_0.008_250)]">
-                    {b.name.split(" ")[0]}
-                  </span>
+                <div key={b.id} className="map-pin" style={positions[i]}>
+                  <div className="pin-marker">
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>storefront</span>
+                  </div>
                 </div>
               );
             })}
-
-            <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-[oklch(0.17_0.028_256/0.6)] px-2.5 py-1 text-[10px] text-[var(--color-muted-foreground)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-neon)] animate-live-blink" /> You · live GPS
-            </div>
-          </div>
+          </>
         )}
-      </main>
-    </div>
+
+        {/* Bottom Action Card (Closest Branch) */}
+        <div className="bottom-card-container">
+          <div className="check-in-card">
+            <div className="card-header">
+              <div className="branch-info">
+                <h2>{closestBranch?.name || "No branches found"}</h2>
+                <p>
+                  {gpsLocation 
+                    ? (closestBranch?.distanceM < 1000 ? `${Math.round(closestBranch.distanceM)} m away` : `${(closestBranch.distanceM / 1000).toFixed(1)} km away`)
+                    : "Fetching GPS..."}
+                </p>
+              </div>
+              <div className="icon-btn" style={{ background: 'transparent' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#0fa5f8' }}>route</span>
+              </div>
+            </div>
+
+            {activeVisit ? (
+              <button 
+                className="action-button btn-red"
+                onClick={handleManualCheckOut}
+                disabled={checkOutMutation.isPending}
+              >
+                {checkOutMutation.isPending ? <Loader2 className="animate-spin" /> : "Check Out"}
+              </button>
+            ) : (
+              <button 
+                className="action-button btn-cyan"
+                onClick={() => closestBranch && handleManualCheckIn(closestBranch.id)}
+                disabled={!closestBranch || checkInMutation.isPending}
+              >
+                {checkInMutation.isPending ? <Loader2 className="animate-spin" /> : "Check In"}
+              </button>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </>
   );
 }
