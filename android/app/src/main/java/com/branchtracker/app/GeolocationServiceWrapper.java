@@ -8,6 +8,9 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Looper;
+import android.app.AlarmManager;
+import android.os.PowerManager;
+import android.os.SystemClock;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -76,6 +79,10 @@ public class GeolocationServiceWrapper extends Service {
     // ── Direct GPS Tracking (FusedLocationProvider) ───────────────────────────
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
+    
+    // ── WakeLock & Heartbeat ──────────────────────────────────────────────────
+    private PowerManager.WakeLock wakeLock;
+    private PendingIntent heartbeatPendingIntent;
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
@@ -89,6 +96,17 @@ public class GeolocationServiceWrapper extends Service {
         // 2. ارفع الـ flag
         ServiceStateHolder.isGeolocationServiceRunning = true;
         Log.i(TAG, "onCreate → isGeolocationServiceRunning = true");
+
+        // 2.5 الحصول على WakeLock لمنع المعالج من النوم
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null) {
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, TAG + ":WakeLock");
+            wakeLock.acquire(); // يبقى ممسوكاً حتى يتم إيقاف الخدمة
+            Log.i(TAG, "WakeLock acquired ✓");
+        }
+
+        // 2.6 جدولة نبضة قلب كل 3 دقائق (Heartbeat)
+        scheduleHeartbeat();
 
         // 3. ابدأ Accelerometer (قراءة مستمرة كل ~200ms = SENSOR_DELAY_GAME)
         startAccelerometer();
@@ -136,6 +154,19 @@ public class GeolocationServiceWrapper extends Service {
         // أوقف مستمع GPS
         if (fusedLocationClient != null && locationCallback != null) {
             fusedLocationClient.removeLocationUpdates(locationCallback);
+        }
+
+        // حرر الـ WakeLock
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+            Log.i(TAG, "WakeLock released ✓");
+        }
+
+        // ألغِ منبه Heartbeat
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager != null && heartbeatPendingIntent != null) {
+            alarmManager.cancel(heartbeatPendingIntent);
+            Log.i(TAG, "Heartbeat alarm cancelled ✓");
         }
 
         super.onDestroy();
@@ -229,6 +260,34 @@ public class GeolocationServiceWrapper extends Service {
             Log.i(TAG, "Started FusedLocationProvider updates directly ✓");
         } catch (SecurityException e) {
             Log.e(TAG, "Missing location permissions", e);
+        }
+    }
+
+    private void scheduleHeartbeat() {
+        AlarmManager alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+        if (alarmManager == null) return;
+
+        Intent intent = new Intent(this, HeartbeatReceiver.class);
+        intent.setAction("com.branchtracker.app.HEARTBEAT");
+        heartbeatPendingIntent = PendingIntent.getBroadcast(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        long interval = 3 * 60 * 1000L; // 3 دقائق
+        
+        try {
+            alarmManager.setRepeating(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + interval,
+                interval,
+                heartbeatPendingIntent
+            );
+            Log.i(TAG, "Heartbeat alarm scheduled (3 mins) ✓");
+        } catch (SecurityException e) {
+            Log.w(TAG, "Cannot schedule exact alarm", e);
         }
     }
 }

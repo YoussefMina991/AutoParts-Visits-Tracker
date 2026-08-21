@@ -107,6 +107,18 @@
             </intent-filter>
         </receiver>
 
+        <!-- ══════════════════════════════════════════════════════════════
+             HeartbeatReceiver: ينبض كل 3 دقائق لضمان أن الخدمة لم تمت
+             ══════════════════════════════════════════════════════════════ -->
+        <receiver
+            android:name=".HeartbeatReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.branchtracker.app.HEARTBEAT" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
     <!-- Permissions -->
@@ -127,4 +139,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Notification permission for Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Wake Lock to keep CPU running -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Exact alarm to trigger heartbeat accurately -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 </manifest>
