@@ -22,6 +22,8 @@ const BRANCH_NAME_TO_CODE: Record<string, string> = {
   "الجيزة : اكتوبر - طيبة جراند مول":"RAT",   // Tiba Mall
   "الجيزة : إمبابة":                  "RAB",   // Imbaba
   "الجيزة : المهندسين - اوتوبارتس ميجا ستور": "RAL", // Mega Store
+  "الجيزة : المهندسين - ميجا ستور":   "RAL",   // Alias for Mega Store
+  "الجيزة : فيصل - اللبيني":          "RAF",   // Alias for Faisal Lebeeny/Abu El Mahasen
 
   // القاهرة
   "القاهرة : وسط البلد - معروف":             "CAI-DT-MAAROUF",

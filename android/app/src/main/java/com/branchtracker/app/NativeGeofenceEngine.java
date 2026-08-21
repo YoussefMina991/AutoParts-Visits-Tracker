@@ -57,7 +57,7 @@ public class NativeGeofenceEngine {
     // 0–29  نظيف | 30–49 مريب | 50+ وهمي
     // ══════════════════════════════════════════════════════════════════════════
     private static final int SCORE_ANDROID_IS_MOCK    = 100; // isMock() API
-    private static final int SCORE_DEV_OPTIONS_ON     = 15;  // ↓ من 40 — وحده لا يكفي
+    private static final int SCORE_DEV_OPTIONS_ON     = 30;  // 30 يكفي للشك القوي
     private static final int SCORE_MOCK_APP_INSTALLED = 45;  // تطبيق Mock مثبت
     private static final int SCORE_ACCURACY_ZERO      = 50;  // accuracy=0 مستحيل
     private static final int SCORE_ACCURACY_TINY_INT  = 20;  // accuracy صحيح ≤ 10
