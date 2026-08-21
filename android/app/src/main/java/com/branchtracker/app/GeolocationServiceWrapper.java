@@ -13,6 +13,7 @@ import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.location.Priority;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -211,11 +212,14 @@ public class GeolocationServiceWrapper extends Service {
 
     private void startLocationUpdates() {
         try {
-            LocationRequest locationRequest = new LocationRequest();
-            locationRequest.setInterval(10000); // 10 ثواني (احتياطي)
-            locationRequest.setFastestInterval(5000);
-            locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-            locationRequest.setSmallestDisplacement(20f); // فقط لو تحرك 20 متر
+            LocationRequest locationRequest = new LocationRequest.Builder(
+                    Priority.PRIORITY_HIGH_ACCURACY,
+                    10_000L // كل 10 ثواني كحد أقصى
+            )
+                    .setMinUpdateIntervalMillis(5_000L)
+                    .setMinUpdateDistanceMeters(20f) // لا تُرسِل إلا لو تحرك 20 متر
+                    .setWaitForAccurateLocation(false)
+                    .build();
 
             fusedLocationClient.requestLocationUpdates(
                 locationRequest,
