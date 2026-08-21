@@ -68,6 +68,8 @@ export const visitRouter = router({
       photoBase64: z.string().optional(),
       notes: z.string().optional(),
       isMocked: z.boolean().optional(),
+      suspicionScore: z.number().optional(),
+      mockReasons: z.array(z.string()).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -115,7 +117,10 @@ export const visitRouter = router({
       }
 
       const finalIsMocked = input.isMocked || isTeleporting;
-      const finalReasons  = teleportReasons.length > 0 ? JSON.stringify(teleportReasons) : null;
+      
+      const combinedReasons = [...(input.mockReasons || []), ...teleportReasons];
+      const finalReasons  = combinedReasons.length > 0 ? JSON.stringify(combinedReasons) : null;
+      const finalScore = (input.suspicionScore || 0) + (isTeleporting ? 100 : 0);
 
       // ✅ المسافة هتتحسب وقت الـ Check-Out مش هنا — بنحفظ distanceToPrevBranchKm = null دلوقتي
       await db.insert(visits).values({
@@ -124,7 +129,7 @@ export const visitRouter = router({
         accuracyIn: input.accuracy, photoUrl, notes: input.notes,
         status: "checked_in",
         isMocked: finalIsMocked ? "yes" : "no",
-        suspicionScore: finalIsMocked ? 100 : 0,
+        suspicionScore: finalScore,
         mockReasons: finalReasons,
         distanceToPrevBranchKm: undefined,  // هيتحدث وقت الـ checkout
       });
