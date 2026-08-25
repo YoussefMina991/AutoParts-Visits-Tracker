@@ -1,4 +1,4 @@
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+﻿import { COOKIE_NAME, SESSION_DURATION_MS } from "@shared/const";
 import { parse as parseCookieHeader } from "cookie";
 import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
@@ -18,7 +18,7 @@ class SDKServer {
     return new TextEncoder().encode(ENV.jwtSecret);
   }
 
-  async signSession(payload: SessionPayload, expiresInMs = ONE_YEAR_MS): Promise<string> {
+  async signSession(payload: SessionPayload, expiresInMs = SESSION_DURATION_MS): Promise<string> {
     const expirationSeconds = Math.floor((Date.now() + expiresInMs) / 1000);
     return new SignJWT({ ...payload })
       .setProtectedHeader({ alg: "HS256", typ: "JWT" })

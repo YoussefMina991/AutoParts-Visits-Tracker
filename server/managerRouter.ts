@@ -95,8 +95,8 @@ export const managerRouter = router({
   uploadPhoto: adminProcedure
     .input(z.object({
       managerId: z.number(),
-      base64: z.string(),       // "data:image/jpeg;base64,..."
-      extension: z.string().max(5).default("jpg"),
+      base64: z.string().max(6_000_000),  // ✅ سقف واضح (~4.5MB صورة فعلية)
+      extension: z.enum(["jpg", "jpeg", "png", "webp"]).default("jpg"), // ✅ allowlist بدل أي امتداد
     }))
     .mutation(async ({ input }) => {
       const db = await getDb();
@@ -105,6 +105,7 @@ export const managerRouter = router({
       // استخرج الـ base64 data بدون الـ prefix
       const base64Data = input.base64.replace(/^data:image\/\w+;base64,/, "");
       const buffer = Buffer.from(base64Data, "base64");
+      if (buffer.length === 0) throw new Error("صورة غير صالحة");
 
       // حفظ الملف في /uploads/managers/
       const uploadsDir = path.join(process.cwd(), "uploads", "managers");

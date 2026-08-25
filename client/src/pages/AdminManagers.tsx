@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { compressImageFile } from "@/lib/imageCompression";
+import { compressImageFile, type ImageExtension } from "@/lib/imageCompression";
 import {
   Dialog,
   DialogContent,
@@ -233,7 +233,7 @@ export default function AdminManagers() {
   const [createOpen, setCreateOpen] = useState(false);
   const [assignManager, setAssignManager] = useState<any>(null);
   const [form, setForm] = useState({ userId: "", employeeCode: "", phone: "" });
-  const [photoFile, setPhotoFile] = useState<{ base64: string; ext: string; preview: string } | null>(null);
+  const [photoFile, setPhotoFile] = useState<{ base64: string; ext: ImageExtension; preview: string } | null>(null);
 
   const {
     data: managersList = [],

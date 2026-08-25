@@ -37,6 +37,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import localforage from "localforage";
 import { getDistanceMeters } from "../../../shared/utils";
+import { SERVER_BASE_URL, MAX_LOCATIONS_PER_SYNC, MAX_VISITS_PER_SYNC } from "@/lib/config";
 
 // ─── Offline stores ───────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ interface PendingCheckIn {
   checkInAt: string; // وقت الدخول الحقيقي
   localId: string;   // ID محلي مؤقت
   isMocked?: boolean; // هل الموقع وهمي؟
+  attempts?: number;  // ✅ عدد مرات رفض المزامنة — بعد 3 يتشال كزومبي
 }
 
 interface PendingCheckOut {
@@ -194,6 +196,7 @@ export function useGeofence() {
   const [latestLocation, setLatestLocation] = useState<{
     lat: number;
     lon: number;
+    accuracy?: number;
     isMocked: boolean;
   } | null>(null);
 
@@ -206,7 +209,7 @@ export function useGeofence() {
       });
       Preferences.set({
         key: "api_url",
-        value: import.meta.env.VITE_API_URL || "https://branch-visit-tracker.up.railway.app",
+        value: SERVER_BASE_URL,
       });
     }
   }, [branches]);
@@ -245,37 +248,59 @@ export function useGeofence() {
   };
 
   // ── مزامنة الزيارات المعلقة مع السيرفر ────────────────────────────────────
-  // مُعرَّفة كـ ref حتى لا تتسبب في إعادة إنشاء الـ watcher
+  // ✅ بنبعت على دفعات (chunks) مطابقة لحد السيرفر — كانت الدفعة الكبيرة
+  //    بترفض كلها مرة واحدة وتبقي المزامنة معطلة للأبد بعد فترة أوفلاين طويلة
   const syncPendingVisitsRef = useRef(async () => {
     if (!navigator.onLine) return;
     try {
       const pending = await getPendingVisits();
       if (pending.length === 0) return;
 
-      const res = await syncVisitsMutationRef.current.mutateAsync({ visits: pending });
+      let allFailedIds: string[] = [];
+      let totalSynced = 0;
+      let totalRejected = 0;
 
-      if (res.synced > 0 || res.rejected > 0) {
-        // ✅ الإصلاح: احتفظ بالمرفوضات بدلاً من حذفها
-        // failedLocalIds = IDs المرفوضة من السيرفر
-        const failedIds = new Set<string>(res.failedLocalIds ?? []);
+      for (let i = 0; i < pending.length; i += MAX_VISITS_PER_SYNC) {
+        const chunk = pending.slice(i, i + MAX_VISITS_PER_SYNC);
+        const res = await syncVisitsMutationRef.current.mutateAsync({ visits: chunk });
+        totalSynced += res.synced;
+        totalRejected += res.rejected;
+        allFailedIds.push(...(res.failedLocalIds ?? []));
+      }
 
-        // sentIds = كل ما أرسلناه (الناجح + المرفوض)
+      if (totalSynced > 0 || totalRejected > 0) {
+        const failedIds = new Set<string>(allFailedIds);
         const sentIds = new Set(
-          pending.map(v => v.type === "check_in" ? v.localId : v.localCheckInId)
+          pending.map((v) => (v.type === "check_in" ? v.localId : v.localCheckInId))
         );
 
         const currentPending = await getPendingVisits();
-        const remaining = currentPending.filter((v) => {
+        // ✅ تنظيف الزومبي: check-in اترفض 3 مرات = بيانات بايظة — نشيله
+        //   عشان ميفضش يعطل الـ auto check-in للأبد
+        const remaining: PendingVisit[] = [];
+        for (const v of currentPending) {
           const id = v.type === "check_in" ? v.localId : v.localCheckInId;
-          // أبقِ: (لم يُرسَل بعد) أو (أُرسِل لكنه مرفوض → أعد المحاولة لاحقاً)
-          return !sentIds.has(id) || failedIds.has(id);
-        });
+          const keepUnsent = !sentIds.has(id);
+          const keepFailed = failedIds.has(id);
+          if (!keepUnsent && !keepFailed) continue;
+
+          if (keepFailed && v.type === "check_in") {
+            const attempts = (v.attempts ?? 0) + 1;
+            if (attempts >= 3) {
+              toast.warning(`⚠️ تسجيل دخول أوفلاين اتلغى بعد ${attempts} محاولات رفض من السيرفر (${v.branchName})`);
+              continue; // زومبي — امسحه
+            }
+            remaining.push({ ...v, attempts });
+          } else {
+            remaining.push(v);
+          }
+        }
 
         await setPendingVisits(remaining);
         refetchHistoryRef.current();
 
-        if (res.rejected > 0) {
-          toast.warning(`⚠️ ${res.rejected} زيارة رُفضت — سيُعاد المحاولة تلقائياً`);
+        if (totalRejected > 0) {
+          toast.warning(`⚠️ ${totalRejected} زيارة مرفوضة — سيُعاد المحاولة تلقائياً`);
         }
       }
     } catch {
@@ -289,10 +314,13 @@ export function useGeofence() {
     try {
       const pending: OfflineLocation[] = (await locationStore.getItem("queue")) || [];
       if (pending.length > 0) {
-        const res = await syncOfflineMutationRef.current.mutateAsync({ locations: pending });
-        if (res.success) {
-          await locationStore.setItem("queue", []);
+        // ✅ دفعات محدودة — كانت الكمية الكبيرة بترفض من السيرفر (max 2000)
+        //    والمزامنة بتتعطل للأبد. لو أي دفعة فشلت، الـ catch بيحافظ على الطابور
+        for (let i = 0; i < pending.length; i += MAX_LOCATIONS_PER_SYNC) {
+          const chunk = pending.slice(i, i + MAX_LOCATIONS_PER_SYNC);
+          await syncOfflineMutationRef.current.mutateAsync({ locations: chunk });
         }
+        await locationStore.setItem("queue", []);
       }
     } catch {
       // silently fail — will retry next time
@@ -367,7 +395,12 @@ export function useGeofence() {
     const detectedMock = checkIsMocked(accuracy, !!isMocked, currentLat, currentLng);
     globalMockedStatus = detectedMock;
 
-    setLatestLocation({ lat: currentLat, lon: currentLng, isMocked: detectedMock });
+    setLatestLocation({
+      lat: currentLat,
+      lon: currentLng,
+      accuracy: typeof accuracy === "number" ? accuracy : undefined,
+      isMocked: detectedMock,
+    });
     if (historyLoadingRef.current) return;
 
     // 1. احفظ نقطة الـ GPS في الـ queue
@@ -543,6 +576,10 @@ export function useGeofence() {
     watcherStartedRef.current = true;
 
     let cleanupFn: (() => void) | null = null;
+    // ✅ حارس السباق: لو الكومبوننت اتقفل قبل ما الـ setup يخلص،
+    //   الـ watcher اللي هيتضاف بعدها لازم يتشال فوراً — كان بيسرب
+    //   خدمة تتبع يتيمة في الخلفية بعد كل Logout/Login
+    let cancelled = false;
 
     const setup = async () => {
       if (Capacitor.isNativePlatform()) {
@@ -550,6 +587,8 @@ export function useGeofence() {
           // Dynamic import — only runs on native Android/iOS.
           const bgGeoModule = "@capacitor-community/background-geolocation";
           const { BackgroundGeolocation } = await import(/* @vite-ignore */ bgGeoModule);
+
+          if (cancelled) return; // اتقفلنا ونا بنجهز — متضيفش حاجة
 
           const id = await BackgroundGeolocation.addWatcher(
             {
@@ -580,6 +619,12 @@ export function useGeofence() {
             }
           );
 
+          if (cancelled) {
+            // اتقفلنا والـ watcher لسه ليه اتضاف — شيله فوراً
+            await BackgroundGeolocation.removeWatcher({ id });
+            return;
+          }
+
           watcherIdRef.current = id;
           cleanupFn = async () => {
             if (watcherIdRef.current) {
@@ -590,7 +635,7 @@ export function useGeofence() {
         } catch (err) {
           console.error("[Geofence] Native setup error:", err);
           console.warn("[Geofence] Falling back to web geolocation...");
-          await setupWebGeolocation();
+          if (!cancelled) await setupWebGeolocation();
         }
       } else {
         await setupWebGeolocation();
@@ -610,8 +655,9 @@ export function useGeofence() {
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
           (pos, err) => {
             if (!err && pos) {
-              // In web fallback, we check for accuracy traces
-              const isSuspicious = pos.coords.accuracy === 0 || pos.coords.accuracy === 1;
+              // ✅ accuracy===1 كانت بتعلّم مواقع حقيقية إنها وهمية على الويب
+              //   المتصفحات بتبلغ دقة عالية جداً أحياناً — نعتمد على 0 بس
+              const isSuspicious = pos.coords.accuracy === 0;
               handlePositionUpdate(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, isSuspicious);
             }
           }
@@ -641,6 +687,7 @@ export function useGeofence() {
     window.addEventListener("online", handleOnline);
 
     return () => {
+      cancelled = true; // ✅ أوقف الـ setup لو لسه شغال
       watcherStartedRef.current = false;
       if (typeof cleanupFn === "function") cleanupFn();
       listenerPromise.then((l) => l.remove());

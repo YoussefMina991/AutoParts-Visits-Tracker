@@ -1,17 +1,21 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { getDistanceMeters } from "../../../shared/utils";
 import { useGeofenceContext } from "@/App";
 import { Link } from "wouter";
 import { Loader2 } from "lucide-react";
+import { MapView, MapMarker, GeofenceCircle, type MapCenter } from "@/components/Map";
 
 export default function BranchCheckIn() {
   const [view, setView] = useState<"list" | "map">("map");
+  const [fly, setFly] = useState<MapCenter | null>(null);
+  const [confirmingCheckout, setConfirmingCheckout] = useState(false);
+  const didAutoFlyRef = useRef(false);
 
   const { latestLocation } = useGeofenceContext();
   const gpsLocation = latestLocation ? { lat: latestLocation.lat, lon: latestLocation.lon } : null;
-  const globalMockedStatus  = latestLocation?.isMocked ?? false;
+  const globalMockedStatus = latestLocation?.isMocked ?? false;
 
   const { data: assignedBranches = [] } = trpc.manager.getMyBranches.useQuery();
   const { data: visitsData, refetch: refetchVisits } = trpc.visit.myHistory.useQuery({ limit: 5, offset: 0 });
@@ -19,18 +23,38 @@ export default function BranchCheckIn() {
   const checkInMutation = trpc.visit.checkIn.useMutation();
   const checkOutMutation = trpc.visit.checkOut.useMutation();
 
+  // أول ما يوصل أول إشارة GPS → طيّر الخريطة على مكانك تلقائياً
+  useEffect(() => {
+    if (gpsLocation && !didAutoFlyRef.current) {
+      didAutoFlyRef.current = true;
+      setFly({ lat: gpsLocation.lat, lng: gpsLocation.lon });
+    }
+  }, [gpsLocation]);
+
   const branchesWithDistance = (assignedBranches as any[]).map((b) => {
     const dist = gpsLocation
       ? getDistanceMeters(gpsLocation.lat, gpsLocation.lon, parseFloat(b.latitude), parseFloat(b.longitude))
       : Infinity;
-    return { ...b, distanceM: dist, status: activeVisit?.branchId === b.id ? "visited" : "pending" };
+    return {
+      ...b,
+      distanceM: dist,
+      inRange: gpsLocation ? dist <= (b.geofenceRadiusMeters || 200) : false,
+      status: activeVisit?.branchId === b.id ? "visited" : "pending",
+    };
   });
 
-  const sortedBranches = [...branchesWithDistance].sort((a, b) => a.distanceM - b.distanceM);
+  const sortedBranches = [...branchesWithDistance].sort(
+    (a, b) => (a.distanceM === Infinity ? 1 : a.distanceM) - (b.distanceM === Infinity ? 1 : b.distanceM)
+  );
   const closestBranch = sortedBranches[0];
 
   const handleManualCheckIn = async (branchId: number) => {
-    if (!gpsLocation) return toast.error("جاري تحديد الموقع...");
+    if (!gpsLocation) return toast.error("لسه بنحدد موقعك — استنى ثواني");
+    if (globalMockedStatus) {
+      toast.error("🚨 الموقع وهمي! اقفل أي برنامج Fake GPS وحاول تاني");
+      return;
+    }
+    const branchName = sortedBranches.find((b) => b.id === branchId)?.name ?? "";
     try {
       await checkInMutation.mutateAsync({
         branchId,
@@ -38,10 +62,10 @@ export default function BranchCheckIn() {
         longitude: gpsLocation.lon.toString(),
         isMocked: globalMockedStatus,
       });
-      toast.success(`✅ Check-in successful at ${sortedBranches.find(b=>b.id===branchId)?.name}`);
+      toast.success(`✅ تم تسجيل دخولك في ${branchName}`);
       refetchVisits();
     } catch (err: any) {
-      toast.error(`❌ Check-in failed: ${err.message || String(err)}`);
+      toast.error(`❌ فشل تسجيل الدخول: ${err.message || String(err)}`);
     }
   };
 
@@ -49,297 +73,406 @@ export default function BranchCheckIn() {
     if (!activeVisit) return;
     try {
       await checkOutMutation.mutateAsync({ visitId: activeVisit.id });
-      toast.success("🔴 Check-out successful!");
+      toast.success("🔴 تم تسجيل خروجك — سلامات!");
       refetchVisits();
     } catch (err: any) {
-      toast.error(`❌ Check-out failed: ${err.message || String(err)}`);
+      toast.error(`❌ فشل تسجيل الخروج: ${err.message || String(err)}`);
+    } finally {
+      setConfirmingCheckout(false);
     }
   };
+
+  const formatDistance = (m: number): string => {
+    if (!isFinite(m)) return "--";
+    return m < 1000 ? `${Math.round(m)} م` : `${(m / 1000).toFixed(1)} كم`;
+  };
+
+  const gpsDenied = !gpsLocation;
 
   return (
     <>
       <style>{`
         .blue-dot-map-page {
           min-height: 100svh;
-          background-color: #0b1326; /* Deep dark blue map background */
+          background-color: #0b1326;
           color: #ffffff;
-          font-family: 'Inter', 'Fira Sans', sans-serif;
+          font-family: 'Cairo', 'Inter', sans-serif;
           position: relative;
           overflow: hidden;
         }
 
-        /* Fake Map Grid Background */
-        .map-grid-bg {
-          position: absolute;
-          inset: 0;
-          background-image: 
-            linear-gradient(rgba(15,165,248,0.05) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(15,165,248,0.05) 1px, transparent 1px);
-          background-size: 40px 40px;
-          z-index: 0;
-        }
-
-        .map-glow {
-          position: absolute;
-          top: 30%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          width: 500px;
-          height: 500px;
-          background: radial-gradient(circle, rgba(15,165,248,0.15) 0%, rgba(15,165,248,0) 60%);
-          border-radius: 50%;
-          pointer-events: none;
-          z-index: 0;
-        }
-
-        /* Top Bar */
         .top-bar {
           position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
+          top: 0; left: 0; right: 0;
           height: 60px;
           padding: 0 20px;
+          padding-top: env(safe-area-inset-top, 0px);
           display: flex;
           justify-content: space-between;
           align-items: center;
-          z-index: 10;
-          background: linear-gradient(to bottom, rgba(11,19,38,0.8), transparent);
+          z-index: 1000;
+          background: linear-gradient(to bottom, rgba(11,19,38,0.9), transparent);
         }
-        .top-bar-title {
-          font-size: 16px;
-          font-weight: 600;
-        }
+        .top-bar-title { font-size: 16px; font-weight: 700; }
 
         .icon-btn {
-          width: 40px;
-          height: 40px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          width: 40px; height: 40px;
+          display: flex; align-items: center; justify-content: center;
           border-radius: 50%;
-          background: rgba(30,34,40,0.6);
-          border: 1px solid rgba(255,255,255,0.05);
+          background: rgba(30,34,40,0.85);
+          border: 1px solid rgba(255,255,255,0.08);
           color: #fff;
           cursor: pointer;
         }
 
-        /* Floating Action Sidebar (Right) */
         .floating-sidebar {
           position: absolute;
-          right: 20px;
-          top: 50%;
+          left: 16px;
+          top: 40%;
           transform: translateY(-50%);
           display: flex;
           flex-direction: column;
-          gap: 16px;
-          z-index: 10;
+          gap: 12px;
+          z-index: 1000;
         }
         .sidebar-btn {
-          width: 44px;
-          height: 44px;
+          width: 44px; height: 44px;
           border-radius: 12px;
-          background: rgba(30, 34, 40, 0.85);
-          border: 1px solid rgba(255,255,255,0.05);
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          background: rgba(30, 34, 40, 0.9);
+          border: 1px solid rgba(255,255,255,0.08);
+          display: flex; align-items: center; justify-content: center;
           color: #fff;
           backdrop-filter: blur(8px);
           cursor: pointer;
           transition: background 0.2s;
         }
-        .sidebar-btn:hover {
-          background: rgba(30, 34, 40, 1);
+        .sidebar-btn:hover { background: rgba(30, 34, 40, 1); }
+        .sidebar-btn.active { background: #0fa5f8; }
+
+        .gps-chip {
+          position: absolute;
+          top: 70px;
+          right: 16px;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: 10px;
+          background: rgba(30,34,40,0.9);
+          border: 1px solid rgba(255,255,255,0.08);
+          font-size: 11px;
+          font-weight: 600;
         }
 
-        /* Pins */
-        .map-pin {
-          position: absolute;
-          transform: translate(-50%, -50%);
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 4px;
-          z-index: 5;
-        }
-        .pin-marker {
-          width: 32px;
-          height: 32px;
-          background: #0fa5f8;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          color: #fff;
-          box-shadow: 0 4px 12px rgba(15,165,248,0.4);
-          border: 2px solid #fff;
-        }
-        .pin-marker.user-pin {
-          background: #34d399; /* Green for user/car */
-          box-shadow: 0 4px 12px rgba(52,211,153,0.4);
-        }
-        
-        /* Bottom Info Card */
         .bottom-card-container {
           position: absolute;
-          bottom: 90px; /* Above bottom nav */
-          left: 0;
-          right: 0;
+          bottom: 90px;
+          left: 0; right: 0;
           padding: 0 20px;
-          z-index: 10;
+          z-index: 1000;
         }
 
         .check-in-card {
-          background: rgba(30, 34, 40, 0.95);
+          background: rgba(30, 34, 40, 0.97);
           backdrop-filter: blur(12px);
-          border: 1px solid rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.06);
           border-radius: 24px;
-          padding: 24px;
+          padding: 22px;
           box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         }
-
-        .card-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 20px;
-        }
-        
-        .branch-info h2 {
-          font-size: 18px;
-          font-weight: 600;
-          margin: 0 0 4px 0;
-        }
-        .branch-info p {
-          font-size: 12px;
-          color: rgba(255,255,255,0.5);
-          margin: 0;
-        }
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+        .branch-info h2 { font-size: 17px; font-weight: 700; margin: 0 0 4px 0; }
+        .branch-info p { font-size: 12px; color: rgba(255,255,255,0.5); margin: 0; }
 
         .action-button {
           width: 100%;
           height: 52px;
-          border-radius: 12px;
+          border-radius: 14px;
           font-size: 15px;
-          font-weight: 600;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
+          font-weight: 700;
+          display: flex; align-items: center; justify-content: center; gap: 8px;
           border: none;
           cursor: pointer;
           transition: transform 0.2s;
         }
-        .action-button:active {
-          transform: scale(0.98);
+        .action-button:active { transform: scale(0.98); }
+        .btn-cyan { background: #0fa5f8; color: #fff; }
+        .btn-red { background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.35); }
+
+        .confirm-row { display: flex; gap: 10px; }
+        .confirm-row .action-button { height: 46px; font-size: 13px; }
+        .btn-confirm-no { flex: 1; background: rgba(255,255,255,0.08); color: #fff; }
+        .btn-confirm-yes { flex: 2; background: #ef4444; color: #fff; }
+
+        /* ── قائمة الفروع ── */
+        .branches-scroll {
+          position: absolute;
+          top: 60px; bottom: 200px; left: 0; right: 0;
+          overflow-y: auto;
+          padding: 12px 16px;
+          z-index: 500;
         }
-        .btn-cyan {
+        .branch-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          background: rgba(30,34,40,0.95);
+          border: 1px solid rgba(255,255,255,0.06);
+          border-radius: 16px;
+          padding: 14px;
+          margin-bottom: 10px;
+        }
+        .branch-row-info { flex: 1; min-width: 0; }
+        .branch-row-info h4 { font-size: 14px; font-weight: 700; margin: 0 0 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .branch-row-info p { font-size: 11px; color: rgba(255,255,255,0.45); margin: 0; }
+        .dist-chip {
+          font-size: 11px; font-weight: 700;
+          padding: 4px 10px;
+          border-radius: 8px;
+          white-space: nowrap;
+        }
+        .mini-checkin-btn {
+          border: none;
           background: #0fa5f8;
           color: #fff;
+          font-size: 12px;
+          font-weight: 700;
+          padding: 8px 14px;
+          border-radius: 10px;
+          cursor: pointer;
+          white-space: nowrap;
         }
-        .btn-red {
-          background: rgba(239, 68, 68, 0.15);
-          color: #ef4444;
-          border: 1px solid rgba(239, 68, 68, 0.3);
+        .mini-checkin-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .map-overlay-gps {
+          position: absolute;
+          inset: 0;
+          z-index: 800;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+          background: rgba(11,19,38,0.75);
+          backdrop-filter: blur(4px);
+          text-align: center;
+          padding: 24px;
         }
       `}</style>
 
       <div className="blue-dot-map-page">
-        <div className="map-grid-bg" />
-        <div className="map-glow" />
+        {/* ── الخريطة الحقيقية ── */}
+        {view === "map" && (
+          <div className="absolute inset-0">
+            <MapView
+              initialCenter={{ lat: 30.0444, lng: 31.2357 }}
+              initialZoom={gpsLocation ? 16 : 11}
+              flyTo={fly}
+              flyToZoom={16}
+              className="h-full w-full"
+            >
+              {/* دوائر النطاق حول كل فرع — تشوف بعينك جوه ولا بره */}
+              {branchesWithDistance.map((b: any) =>
+                b.latitude && b.longitude ? (
+                  <GeofenceCircle
+                    key={`c-${b.id}`}
+                    lat={parseFloat(b.latitude)}
+                    lng={parseFloat(b.longitude)}
+                    radiusMeters={b.geofenceRadiusMeters || 200}
+                    color="#0fa5f8"
+                    inRange={b.inRange}
+                  />
+                ) : null
+              )}
+              {/* بنرات الفروع بأماكنها الحقيقية */}
+              {branchesWithDistance.map((b: any) =>
+                b.latitude && b.longitude ? (
+                  <MapMarker
+                    key={`m-${b.id}`}
+                    lat={parseFloat(b.latitude)}
+                    lng={parseFloat(b.longitude)}
+                    label={`${b.inRange ? "✅" : ""} ${b.name}`}
+                    color={activeVisit?.branchId === b.id ? "#34d399" : "#0fa5f8"}
+                  />
+                ) : null
+              )}
+              {/* بنرتك الحقيقية — بتتحرك معاك */}
+              {gpsLocation && (
+                <MapMarker lat={gpsLocation.lat} lng={gpsLocation.lon} label="أنت" color="#f59e0b" />
+              )}
+            </MapView>
+          </div>
+        )}
 
-        {/* Top Bar */}
+        {/* ── قائمة الفروع (وضع القائمة الحقيقي) ── */}
+        {view === "list" && (
+          <div className="branches-scroll">
+            {sortedBranches.map((b: any) => (
+              <div key={b.id} className="branch-row">
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 26, color: b.inRange ? "#34d399" : "rgba(255,255,255,0.35)" }}
+                >
+                  {b.status === "visited" ? "check_circle" : b.inRange ? "location_on" : "location_off"}
+                </span>
+                <div className="branch-row-info">
+                  <h4>{b.name}</h4>
+                  <p>{b.address || formatDistance(b.distanceM)}</p>
+                </div>
+                <span
+                  className="dist-chip"
+                  style={{
+                    background: b.inRange ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.06)",
+                    color: b.inRange ? "#34d399" : "rgba(255,255,255,0.55)",
+                  }}
+                >
+                  {formatDistance(b.distanceM)}
+                </span>
+                {!activeVisit && b.inRange && (
+                  <button
+                    className="mini-checkin-btn"
+                    onClick={() => handleManualCheckIn(b.id)}
+                    disabled={checkInMutation.isPending}
+                  >
+                    دخول
+                  </button>
+                )}
+              </div>
+            ))}
+            {sortedBranches.length === 0 && (
+              <p style={{ textAlign: "center", marginTop: 60, fontSize: 13, color: "rgba(255,255,255,0.4)" }}>
+                مفيش فروع مسندة لك حالياً
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ── شريط علوي ── */}
         <div className="top-bar">
           <Link href="/">
             <a className="icon-btn">
-              <span className="material-symbols-outlined">arrow_back</span>
+              <span className="material-symbols-outlined">arrow_forward</span>
             </a>
           </Link>
-          <div className="top-bar-title">Locations</div>
-          <button className="icon-btn">
-            <span className="material-symbols-outlined">search</span>
+          <div className="top-bar-title">الفروع القريبة</div>
+          <button
+            className={`sidebar-btn ${view === "list" ? "active" : ""}`}
+            style={{ width: 40, height: 40 }}
+            onClick={() => setView(view === "list" ? "map" : "list")}
+            title="تبديل بين الخريطة والقائمة"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+              {view === "list" ? "map" : "list"}
+            </span>
           </button>
         </div>
 
-        {/* Floating Right Sidebar */}
-        <div className="floating-sidebar">
-          <button className="sidebar-btn" onClick={() => setView(view === "list" ? "map" : "list")}>
-            <span className="material-symbols-outlined">{view === "list" ? "map" : "list"}</span>
-          </button>
-          <button className="sidebar-btn">
-            <span className="material-symbols-outlined">tune</span>
-          </button>
-          <button className="sidebar-btn">
-            <span className="material-symbols-outlined">my_location</span>
-          </button>
-        </div>
-
-        {/* Map Pins Simulation */}
-        {view === "map" && (
-          <>
-            {/* User Pin */}
-            <div className="map-pin" style={{ left: "50%", top: "75%" }}>
-              <div className="pin-marker user-pin">
-                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>person</span>
-              </div>
-            </div>
-
-            {/* Branches Pins */}
-            {sortedBranches.slice(0, 3).map((b, i) => {
-              const positions = [
-                { left: "30%", top: "40%" },
-                { left: "70%", top: "25%" },
-                { left: "80%", top: "55%" },
-              ];
-              return (
-                <div key={b.id} className="map-pin" style={positions[i]}>
-                  <div className="pin-marker">
-                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>storefront</span>
-                  </div>
-                </div>
-              );
-            })}
-          </>
+        {/* ── حالة الـ GPS الحقيقية ── */}
+        {view === "map" && gpsLocation && (
+          <div className="gps-chip">
+            <span style={{ color: "#34d399" }}>●</span>
+            دقة الموقع
+            <span style={{ color: "#fff", fontFamily: "monospace" }}>
+              ±{latestLocation?.accuracy ? Math.round(latestLocation.accuracy) : "?"} م
+            </span>
+          </div>
         )}
 
-        {/* Bottom Action Card (Closest Branch) */}
+        {/* زرار موقعي — بيشتغل فعلاً وبيثبت الخريطة عليك */}
+        {view === "map" && (
+          <div className="floating-sidebar">
+            <button
+              className="sidebar-btn"
+              onClick={() => {
+                if (gpsLocation) {
+                  setFly({ lat: gpsLocation.lat, lng: gpsLocation.lon });
+                  toast.info("تم تثبيت الخريطة على موقعك");
+                } else {
+                  toast.error("لسه بنحدد موقعك — استنى ثواني");
+                }
+              }}
+              title="موقعي"
+            >
+              <span className="material-symbols-outlined">my_location</span>
+            </button>
+          </div>
+        )}
+
+        {/* أوفرلاي انتظار/مشكلة الـ GPS */}
+        {view === "map" && !gpsLocation && (
+          <div className="map-overlay-gps">
+            <Loader2 className="w-8 h-8 animate-spin text-[#0fa5f8]" />
+            <p style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>جاري تحديد موقعك...</p>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", margin: 0, lineHeight: 1.8 }}>
+              لو استغرق وقت طويل، اتأكد إن صلاحية الموقع مفتوحة للتطبيق<br />
+              (الإعدادات ← التطبيقات ← Branch Tracker ← الأذونات ← الموقع)
+            </p>
+          </div>
+        )}
+
+        {/* ── الكارت السفلي ── */}
         <div className="bottom-card-container">
           <div className="check-in-card">
             <div className="card-header">
               <div className="branch-info">
-                <h2>{closestBranch?.name || "No branches found"}</h2>
+                <h2>{closestBranch?.name || "مفيش فروع متسابة لك"}</h2>
                 <p>
-                  {gpsLocation 
-                    ? (closestBranch?.distanceM < 1000 ? `${Math.round(closestBranch.distanceM)} m away` : `${(closestBranch.distanceM / 1000).toFixed(1)} km away`)
-                    : "Fetching GPS..."}
+                  {gpsLocation
+                    ? activeVisit
+                      ? `انت مسجل حالياً في ${activeVisit.branchName}`
+                      : closestBranch?.inRange
+                        ? "✅ انت داخل نطاق الفرع — تقدر تسجل دخول"
+                        : `أقرب فرع على بعد ${formatDistance(closestBranch?.distanceM ?? Infinity)}`
+                    : "في وضعية تحديد الموقع..."}
                 </p>
-              </div>
-              <div className="icon-btn" style={{ background: 'transparent' }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 24, color: '#0fa5f8' }}>route</span>
               </div>
             </div>
 
             {activeVisit ? (
-              <button 
-                className="action-button btn-red"
-                onClick={handleManualCheckOut}
-                disabled={checkOutMutation.isPending}
-              >
-                {checkOutMutation.isPending ? <Loader2 className="animate-spin" /> : "Check Out"}
-              </button>
+              confirmingCheckout ? (
+                <div className="confirm-row">
+                  <button
+                    className="action-button btn-confirm-no"
+                    onClick={() => setConfirmingCheckout(false)}
+                  >
+                    لأ، فضلت داخل
+                  </button>
+                  <button
+                    className="action-button btn-confirm-yes"
+                    onClick={handleManualCheckOut}
+                    disabled={checkOutMutation.isPending}
+                  >
+                    {checkOutMutation.isPending ? <Loader2 className="animate-spin" /> : "نعم، سجل خروجي"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="action-button btn-red"
+                  onClick={() => setConfirmingCheckout(true)}
+                  disabled={checkOutMutation.isPending}
+                >
+                  {checkOutMutation.isPending ? <Loader2 className="animate-spin" /> : "تسجيل الخروج"}
+                </button>
+              )
             ) : (
-              <button 
+              <button
                 className="action-button btn-cyan"
                 onClick={() => closestBranch && handleManualCheckIn(closestBranch.id)}
-                disabled={!closestBranch || checkInMutation.isPending}
+                disabled={!closestBranch || !closestBranch.inRange || checkInMutation.isPending}
+                title={!closestBranch?.inRange ? "لازم تكون داخل نطاق الفرع الأول" : ""}
               >
-                {checkInMutation.isPending ? <Loader2 className="animate-spin" /> : "Check In"}
+                {checkInMutation.isPending ? (
+                  <Loader2 className="animate-spin" />
+                ) : closestBranch?.inRange ? (
+                  "تسجيل الدخول هنا"
+                ) : (
+                  "اقترب من الفرع لتسجيل الدخول"
+                )}
               </button>
             )}
           </div>
         </div>
-
       </div>
     </>
   );

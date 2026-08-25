@@ -15,6 +15,8 @@ function createAuthContext(): { ctx: TrpcContext; clearedCookies: CookieCall[] }
     email: "test@example.com",
     name: "Test User",
     role: "user",
+    boundDeviceId: null,
+    deviceBoundAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     lastSignedIn: new Date(),

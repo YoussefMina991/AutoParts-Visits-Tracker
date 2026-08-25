@@ -8,6 +8,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { sdk } from "./sdk";
 import cors from "cors";
 
 // ── Rate Limiter (in-memory — مناسب لسيرفر واحد) ─────────────────────────────
@@ -115,9 +116,15 @@ async function startServer() {
   const loginLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, max: 20 });
   app.use("/api/auth/login", loginLimiter);
 
-  // Serve locally uploaded files (photos from check-in)
+  // Serve locally uploaded files (photos) — 🔒 محمي بتسجيل دخول صالح
+  // (كان مفتوح للعالم: صور المديرين بأسماء ملفات قابلة للتخمين)
   const uploadsDir = path.join(process.cwd(), "uploads");
-  app.use("/uploads", express.static(uploadsDir));
+  app.use("/uploads", (req, res, next) => {
+    sdk
+      .authenticateRequest(req)
+      .then(() => next())
+      .catch(() => res.status(401).json({ error: "Unauthorized" }));
+  }, express.static(uploadsDir));
 
   // Auth routes (login)
   registerOAuthRoutes(app);

@@ -5,10 +5,12 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import { Capacitor } from "@capacitor/core";
 import { Device } from "@capacitor/device";
+import { SERVER_BASE_URL } from "@/lib/config";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
@@ -31,7 +33,8 @@ export default function LoginPage() {
         deviceId = info.identifier;
       }
 
-      const BASE_URL = import.meta.env.VITE_API_URL || "http://192.168.1.8:3000";
+      // ✅ نفس الرابط الافتراضي للإنتاج المستخدم في باقي التطبيق
+      const BASE_URL = SERVER_BASE_URL;
       const LOGIN_URL = Capacitor.isNativePlatform()
         ? `${BASE_URL}/api/auth/login`
         : "/api/auth/login";
@@ -53,7 +56,7 @@ export default function LoginPage() {
       }
       window.location.href = "/";
     } catch {
-      toast.error("حدث خطأ في الاتصال بالخادم");
+      toast.error("حدث خطأ في الاتصال بالخادم — اتأكد من اتصالك بالإنترنت");
     } finally {
       setLoading(false);
     }
@@ -258,7 +261,7 @@ export default function LoginPage() {
         <div className="top-glow" />
 
         <div className="content-container">
-          <span className="welcome-text">WELCOME TO</span>
+          <span className="welcome-text">مرحباً بك في</span>
           <h1 className="brand-title">AutoParts</h1>
 
           <div className="features-area">
@@ -269,39 +272,65 @@ export default function LoginPage() {
                     <span className="material-symbols-outlined">security</span>
                   </div>
                   <div className="feature-content">
-                    <h3>Secure & Fast</h3>
-                    <p>Fast, secure, and innovative visit tracking for a better tomorrow.</p>
+                    <h3>حماية كاملة</h3>
+                    <p>حسابك مربوط بموبايلك وموقعك بيتحقق منه لحظياً — منع الغش أول بأول.</p>
                   </div>
                 </div>
 
                 <div className="feature-card">
                   <div className="feature-icon-wrapper">
-                    <span className="material-symbols-outlined">manage_accounts</span>
+                    <span className="material-symbols-outlined">autorenew</span>
                   </div>
                   <div className="feature-content">
-                    <h3>Multi-role</h3>
-                    <p>Team management made easy with secure, multi-role support.</p>
+                    <h3>تسجيل تلقائي</h3>
+                    <p>دخل نطاق الفرع؟ التسجيل بيحصل لوحده حتى لو النت واقف.</p>
                   </div>
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleLogin} className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <form id="login-form" onSubmit={handleLogin} className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <input
                   type="text"
                   className="login-input"
-                  placeholder="Username"
+                  placeholder="اسم المستخدم"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={loading}
+                  autoComplete="username"
                 />
-                <input
-                  type="password"
-                  className="login-input"
-                  placeholder="Password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading}
-                />
+                <div style={{ position: "relative" }}>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    className="login-input"
+                    style={{ paddingLeft: 48 }}
+                    placeholder="كلمة السر"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={loading}
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: "absolute",
+                      left: 8,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "transparent",
+                      border: "none",
+                      color: "rgba(255,255,255,0.45)",
+                      cursor: "pointer",
+                      padding: 8,
+                      display: "flex",
+                    }}
+                    tabIndex={-1}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+                      {showPassword ? "visibility_off" : "visibility"}
+                    </span>
+                  </button>
+                </div>
               </form>
             )}
           </div>
@@ -309,27 +338,18 @@ export default function LoginPage() {
           <div className="actions-area">
             {!showForm ? (
               <button className="btn-blue" onClick={() => setShowForm(true)}>
-                Log in
+                تسجيل الدخول
               </button>
             ) : (
-              <button className="btn-blue" onClick={handleLogin} disabled={loading}>
-                {loading ? <Loader2 className="animate-spin" /> : "Sign in"}
-              </button>
-            )}
-            
-            {!showForm && (
-              <button className="btn-outline">
-                Create Account
+              <button type="submit" form="login-form" className="btn-blue" disabled={loading}>
+                {loading ? <Loader2 className="animate-spin" /> : "دخول"}
               </button>
             )}
           </div>
 
-          <div className="languages">
-            <span>English</span> | 
-            <span>Arabic</span> | 
-            <span>Chinese</span> | 
-            <span>Spanish</span>
-          </div>
+          <p style={{ marginTop: 30, fontSize: 11, color: "rgba(255,255,255,0.35)", textAlign: "center", lineHeight: 1.7 }}>
+            حسابك بيتعمله من إدارة الشركة<br />لو نسيت بياناتك كلم المسؤول
+          </p>
         </div>
       </div>
     </>

@@ -19,25 +19,31 @@ interface VisitForCheckout {
   id: number;
   checkInAt: Date;
   branchName: string;
+  branchLatitude?: string | null;
+  branchLongitude?: string | null;
 }
 
 // ── دالة مساعدة: احسب المسافة من الفرع السابق (أي زيارة مكتملة في نفس اليوم) ─
+// ✅ استراتيجية مزدوجة:
+//    ① مصفوفة المسافات المعتمدة من الشيت (أدق — مسافات طرق فعلية)
+//    ② Fallback Haversine بين إحداثيات الفرعين (خط مستقيم — تقريب كافٍ
+//       لكشف الغش) مع تاج DIST_HAVERSINE_ESTIMATE عشان الأدمن يعرف المصدر
 async function calcDistanceFromPrevBranch(
   db: Db,
   managerId: number,
   currentBranchName: string,
+  currentLat: number | undefined,
+  currentLng: number | undefined,
   referenceTime: Date,
-): Promise<{ km: number; prevBranchName: string; timeDiffMin: number } | null> {
-  if (!db) return null;
-
+): Promise<{ km: number; prevBranchName: string; timeDiffMin: number; estimated: boolean } | null> {
   const dayStart = new Date(referenceTime);
   dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(dayStart);
-  dayEnd.setDate(dayEnd.getDate() + 1);
 
   // جيب آخر زيارة مكتملة في نفس اليوم (أي مدة — مش شرط 15 دقيقة)
   const prevVisits = await db.select({
     branchName: branches.name,
+    latitude: branches.latitude,
+    longitude: branches.longitude,
     checkInAt:  visits.checkInAt,
     checkOutAt: visits.checkOutAt,
   }).from(visits)
@@ -54,12 +60,30 @@ async function calcDistanceFromPrevBranch(
   if (!prevVisits[0]?.checkOutAt) return null;
 
   const prev = prevVisits[0];
-  const km = getBranchDistance(prev.branchName, currentBranchName);
-  if (km === null) return null;
+
+  // ① الأولوية للمصفوفة المعتمدة
+  let km = getBranchDistance(prev.branchName, currentBranchName);
+  let estimated = false;
+
+  // ② Fallback: خط مستقيم بين الإحداثيات
+  if (km === null && currentLat !== undefined && currentLng !== undefined
+      && prev.latitude && prev.longitude) {
+    const meters = getDistanceMeters(
+      parseFloat(prev.latitude), parseFloat(prev.longitude),
+      currentLat, currentLng
+    );
+    km = Math.round(meters / 100) / 10; // تقريب لأقرب 100 متر
+    estimated = true;
+  }
+
+  if (km === null) {
+    console.warn(`[Distances] No distance source for: "${prev.branchName}" → "${currentBranchName}"`);
+    return null;
+  }
 
   const timeDiffMin = (referenceTime.getTime() - (prev.checkOutAt as Date).getTime()) / 60_000;
 
-  return { km, prevBranchName: prev.branchName, timeDiffMin };
+  return { km, prevBranchName: prev.branchName, timeDiffMin, estimated };
 }
 
 // ── دالة مساعدة: هل الانتقال مستحيل؟ (Teleportation check) ─────────────────
@@ -77,32 +101,29 @@ async function finalizeCheckOut(
   managerId: number,
   visit: VisitForCheckout,
   checkOutTime: Date,
-): Promise<{ durationMin: number; distanceKm: number | null; isTeleporting: boolean }> {
+): Promise<{ durationMin: number; distanceKm: number | null; isTeleporting: boolean; distanceEstimated: boolean }> {
   const durationMin = (checkOutTime.getTime() - visit.checkInAt.getTime()) / 60_000;
 
   // المسافة والـ Teleportation بيتحسبوا دايماً بغض النظر عن المدة
-  let distanceToPrevBranchKm: number | undefined;
+  let distanceKm: number | undefined;
   let isTeleporting = false;
+  let distanceEstimated = false;
 
-  const prevResult = await calcDistanceFromPrevBranch(db, managerId, visit.branchName, visit.checkInAt);
+  const prevResult = await calcDistanceFromPrevBranch(
+    db,
+    managerId,
+    visit.branchName,
+    visit.branchLatitude ? parseFloat(visit.branchLatitude) : undefined,
+    visit.branchLongitude ? parseFloat(visit.branchLongitude) : undefined,
+    visit.checkInAt
+  );
   if (prevResult !== null) {
-    distanceToPrevBranchKm = prevResult.km;
+    distanceKm = prevResult.km;
+    distanceEstimated = prevResult.estimated;
     // إعادة فحص Teleportation كـ double-check (الأساسي بيحصل وقت checkIn)
     if (isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
       isTeleporting = true;
     }
-  }
-
-  // ── 🚨 كشف الزيارة القصيرة جداً ────────────────────────────────────────
-  // أقل من 3 دقايق = مشبوه جداً (نقاط عالية) / أقل من 7 دقايق = مشبوه (نقاط متوسطة)
-  let shortVisitScore = 0;
-  let shortVisitReason: string | null = null;
-  if (durationMin < 3) {
-    shortVisitScore = 80;
-    shortVisitReason = `SHORT_VISIT:${Math.round(durationMin * 60)}sec`;
-  } else if (durationMin < 7) {
-    shortVisitScore = 40;
-    shortVisitReason = `SHORT_VISIT:${Math.round(durationMin)}min`;
   }
 
   // نجيب الـ suspicionScore الحالي من الداتابيز عشان نجمع عليه
@@ -116,8 +137,21 @@ async function finalizeCheckOut(
     try { return JSON.parse(currentVisitData[0]?.mockReasons ?? "[]"); } catch { return []; }
   })();
 
-  const finalScore   = existingScore + shortVisitScore; // teleport score اتحسب وقت checkIn
-  const finalReasons = shortVisitReason ? [...existingReasons, shortVisitReason] : existingReasons;
+  // ✅ بناء الأسباب الجديدة: تاج مصدر المسافة + الزيارة القصيرة
+  const newReasons = [...existingReasons];
+  if (distanceEstimated) newReasons.push("DIST_HAVERSINE_ESTIMATE");
+  let shortVisitScore = 0;
+  if (durationMin < 3) {
+    shortVisitScore = 80;
+    newReasons.push(`SHORT_VISIT:${Math.round(durationMin * 60)}sec`);
+  } else if (durationMin < 7) {
+    shortVisitScore = 40;
+    newReasons.push(`SHORT_VISIT:${Math.round(durationMin)}min`);
+  }
+
+  const finalScore = existingScore + shortVisitScore; // teleport score اتحسب وقت checkIn
+  // ✅ مقارنة بالمحتوى مش بالطول — عشان أي تغيير في الأسباب يتسجل
+  const reasonsChanged = JSON.stringify(newReasons) !== JSON.stringify(existingReasons);
   const isShortMocked = shortVisitScore >= 80; // أقل من 3 دقايق → وهمي مباشرة
 
   // لا نكتب "no" أبداً — فقط "yes" إذا اكتشفنا teleporting أو زيارة قصيرة جداً
@@ -129,20 +163,22 @@ async function finalizeCheckOut(
     checkOutAt: checkOutTime,
     status: "checked_out",
     ...mockedUpdate,
-    ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm: distanceToPrevBranchKm.toString() } : {}),
-    ...(shortVisitScore > 0 ? {
+    ...(distanceKm !== undefined ? { distanceToPrevBranchKm: distanceKm.toString() } : {}),
+    ...(reasonsChanged ? {
       suspicionScore: finalScore,
-      mockReasons: JSON.stringify(finalReasons),
+      mockReasons: JSON.stringify(newReasons),
     } : {}),
   }).where(and(
     eq(visits.id, visit.id),
     eq(visits.managerId, managerId),
+    eq(visits.status, "checked_in"), // ✅ حارس: ميتكتبش على زيارة متقفلة خلاص (idempotency)
   ));
 
   return {
     durationMin,
-    distanceKm: distanceToPrevBranchKm ?? null,
+    distanceKm: distanceKm ?? null,
     isTeleporting,
+    distanceEstimated,
   };
 }
 
@@ -198,7 +234,11 @@ export const visitRouter = router({
       let isTeleporting = false;
       const teleportReasons: string[] = [];
 
-      const prevResult = await calcDistanceFromPrevBranch(db, manager.id, branch.name, new Date());
+      const prevResult = await calcDistanceFromPrevBranch(
+        db, manager.id, branch.name,
+        parseFloat(branch.latitude), parseFloat(branch.longitude),
+        new Date()
+      );
       if (prevResult !== null) {
         const { km, prevBranchName, timeDiffMin } = prevResult;
         if (isTeleportation(km, timeDiffMin)) {
@@ -256,6 +296,8 @@ export const visitRouter = router({
         id: visits.id,
         checkInAt: visits.checkInAt,
         branchName: branches.name,
+        branchLatitude: branches.latitude,
+        branchLongitude: branches.longitude,
       }).from(visits)
         .innerJoin(branches, eq(visits.branchId, branches.id))
         .where(and(
@@ -296,6 +338,8 @@ export const visitRouter = router({
         id:        visits.id,
         checkInAt: visits.checkInAt,
         branchName: branches.name,
+        branchLatitude: branches.latitude,
+        branchLongitude: branches.longitude,
       }).from(visits)
         .innerJoin(branches, eq(visits.branchId, branches.id))
         .where(and(
@@ -542,7 +586,11 @@ export const visitRouter = router({
 
           let isTeleporting = false;
           const checkInTime = new Date(ci.checkInAt);
-          const prevResult = await calcDistanceFromPrevBranch(db, manager.id, ci.branchName, checkInTime);
+          const prevResult = await calcDistanceFromPrevBranch(
+            db, manager.id, ci.branchName,
+            parseFloat(branch.latitude), parseFloat(branch.longitude),
+            checkInTime
+          );
           if (prevResult !== null && isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
             isTeleporting = true;
             const speedKmh = Math.round(prevResult.km / (prevResult.timeDiffMin / 60));
@@ -594,6 +642,8 @@ export const visitRouter = router({
             id: visits.id,
             checkInAt: visits.checkInAt,
             branchName: branches.name,
+            branchLatitude: branches.latitude,
+            branchLongitude: branches.longitude,
           })
             .from(visits)
             .innerJoin(branches, eq(visits.branchId, branches.id))

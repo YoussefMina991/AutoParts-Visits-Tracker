@@ -52,8 +52,8 @@ export default function SyncPage() {
         <AmbientStatusBar />
         
         <header className="sync-header">
-          <h1>Sync Center</h1>
-          <p>Manage your offline visits and GPS data</p>
+          <h1>مركز المزامنة</h1>
+          <p>إدارة الزيارات ونقاط الـ GPS المحفوظة أوفلاين</p>
         </header>
 
         <main className="mx-auto w-full max-w-md">

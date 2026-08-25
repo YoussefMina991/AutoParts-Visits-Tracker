@@ -6,13 +6,21 @@
  * النتيجة النموذجية: صورة 3-5MB → 100-300KB.
  */
 
+export type ImageExtension = "jpg" | "jpeg" | "png" | "webp";
+
 export interface CompressedImage {
   base64: string; // data URL جاهزة للإرسال
-  extension: string;
+  extension: ImageExtension;
 }
 
+const ALLOWED_EXTENSIONS: ImageExtension[] = ["jpg", "jpeg", "png", "webp"];
 const MAX_DIMENSION = 1024;
 const JPEG_QUALITY = 0.75;
+
+function safeExtension(raw: string | undefined): ImageExtension {
+  const ext = raw?.toLowerCase() as ImageExtension;
+  return ALLOWED_EXTENSIONS.includes(ext) ? ext : "jpg";
+}
 
 export async function compressImageFile(file: File): Promise<CompressedImage> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -31,7 +39,7 @@ export async function compressImageFile(file: File): Promise<CompressedImage> {
 
   // لو الصورة أصغر من الحد الأصلاً → ابعتها زي ما هي
   if (img.width <= MAX_DIMENSION && img.height <= MAX_DIMENSION && file.size < 400_000) {
-    return { base64: dataUrl, extension: file.name.split(".").pop()?.toLowerCase() || "jpg" };
+    return { base64: dataUrl, extension: safeExtension(file.name.split(".").pop()) };
   }
 
   const scale = Math.min(1, MAX_DIMENSION / Math.max(img.width, img.height));

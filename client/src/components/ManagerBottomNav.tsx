@@ -1,10 +1,10 @@
 import { Link, useLocation } from "wouter";
 
 const NAV_ITEMS = [
-  { icon: "home",          label: "Home",      path: "/" },
-  { icon: "location_on",   label: "Check-in",  path: "/check-in" },
-  { icon: "history",       label: "History",   path: "/history" },
-  { icon: "sync",          label: "Sync",      path: "/sync" },
+  { icon: "home",          label: "الرئيسية",   path: "/" },
+  { icon: "location_on",   label: "الفروع",     path: "/check-in" },
+  { icon: "history",       label: "السجل",      path: "/history" },
+  { icon: "sync",          label: "المزامنة",   path: "/sync" },
 ];
 
 export function ManagerBottomNav() {
@@ -55,18 +55,19 @@ export function ManagerBottomNav() {
                 >
                   {item.icon}
                 </span>
-                {/* <span
+                <span
                   style={{
                     fontSize: 10,
-                    fontWeight: 500,
-                    marginTop: 4,
+                    fontWeight: 600,
+                    marginTop: 3,
+                    fontFamily: "'Cairo', sans-serif",
                     color: active ? "#0fa5f8" : "rgba(255, 255, 255, 0.4)",
                     transition: "color 0.2s ease",
                     zIndex: 1
                   }}
                 >
                   {item.label}
-                </span> */}
+                </span>
               </a>
             </Link>
           );

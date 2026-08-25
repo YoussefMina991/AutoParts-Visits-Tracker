@@ -243,24 +243,24 @@ export function OfflineVault() {
               <span className="material-symbols-outlined">cloud_off</span>
             </div>
             <div>
-              <h2>Offline Storage</h2>
-              <p>Safe & secure data vault</p>
+              <h2>التخزين أوفلاين</h2>
+              <p>بياناتك محفوظة بأمان على جهازك</p>
             </div>
             {items.length === 0 ? (
               <div className="status-badge synced">
-                <span className="status-dot synced" /> All Synced
+                <span className="status-dot synced" /> كله متزامن
               </div>
             ) : (
               <div className="status-badge queued">
-                <span className="status-dot queued" /> {items.length} Queued
+                <span className="status-dot queued" /> {items.length} في الانتظار
               </div>
             )}
           </div>
 
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 1.5, margin: 0 }}>
-            {items.length === 0 
-              ? "Your device is fully synced with the cloud. No pending offline data." 
-              : `${items.filter((i) => i.type !== "gps").length} events and ${gpsPoints.toLocaleString()} GPS points are stored safely on your device.`}
+            {items.length === 0
+              ? "جهازك متزامن تماماً مع السيرفر — مفيش بيانات معلقة."
+              : `${items.filter((i) => i.type !== "gps").length} أحداث و ${gpsPoints.toLocaleString()} نقطة GPS محفوظة على جهازك وهتتبعت أول ما النت يرجع.`}
           </p>
 
           {items.length > 0 && (
@@ -271,11 +271,11 @@ export function OfflineVault() {
                     {item.type === "gps" ? "GPS" : item.type === "check-in" ? "IN" : "OUT"}
                   </div>
                   <div className="item-content">
-                    <h4>{item.type === "check-in" ? "Check-in" : item.type === "check-out" ? "Check-out" : "GPS Trail"}</h4>
+                    <h4>{item.type === "check-in" ? "تسجيل دخول" : item.type === "check-out" ? "تسجيل خروج" : "مسار GPS"}</h4>
                     <p>{item.branchName}</p>
                   </div>
                   {item.payloadCount && (
-                    <div className="item-meta">{item.payloadCount} pts</div>
+                    <div className="item-meta">{item.payloadCount} نقطة</div>
                   )}
                 </div>
               ))}
@@ -287,7 +287,7 @@ export function OfflineVault() {
               <div className="sync-progress-bar">
                 <div className="sync-progress-fill" />
               </div>
-              <span className="sync-status-text">Auto-sync armed</span>
+              <span className="sync-status-text">المزامنة التلقائية جاهزة</span>
             </div>
           )}
         </div>

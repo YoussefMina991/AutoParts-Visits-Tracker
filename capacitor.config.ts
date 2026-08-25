@@ -1,5 +1,17 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
+// ── ⚡ Live Reload (للمطوير فقط) ──────────────────────────────────────────────
+// لو عايز أي تعديل في الكود يظهر فوراً على موبايلك من غير rebuild:
+//   1. شغّل السيرفر:  pnpm dev
+//   2. اعرف IP جهازك: ipconfig  (خد رقم IPv4 زي 192.168.1.8)
+//   3. نفذ:           $env:CAP_DEV_SERVER_URL="http://<الـIP>:3000"; npx cap sync android
+//   4. اعمل build للـ APK مرة واحدة بس وسطبها
+// بعد كده: طالمآ الموبايل والكمبيوتر على نفس الواي فاي — أي Save هيظهر على الموبايل فوراً!
+//
+// ⚠️ مهم جداً: قبل بناء نسخة الموظفين النهائية، متحطش المتغير ده — سيبه فاضي
+//    والـ APK هتشتغل عادي من الملفات المدمجة فيها.
+const devServerUrl = process.env.CAP_DEV_SERVER_URL;
+
 const config: CapacitorConfig = {
   appId: 'com.branchtracker.app',
   appName: 'Branch Tracker',
@@ -9,6 +21,8 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
     // Allow cleartext traffic to the API server during development
     cleartext: true,
+    // Live Reload: بيشتغل فقط لو المتغير متحدد — وإلا التطبيق عادي من الـ bundle
+    ...(devServerUrl ? { url: devServerUrl } : {}),
   },
   android: {
     // Allow navigation to the API server

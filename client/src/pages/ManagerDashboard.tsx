@@ -1,12 +1,59 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Link } from "wouter";
+import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
+
+// ── تحية حسب الوقت الفعلي بالعربي ─────────────────────────────────────────────
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return "صباح الخير";
+  if (h >= 12 && h < 17) return "نهار سعيد";
+  return "مساء الخير";
+}
+
+function formatDuration(ms: number): string {
+  const totalMin = Math.max(0, Math.floor(ms / 60_000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return `${h} س ${m} د`;
+  return `${m} دقيقة`;
+}
 
 export default function ManagerDashboard() {
   const { user } = useAuth();
   // صورة المدير بتتخزن في جدول managers مش users
   const { data: managerProfile } = trpc.manager.getCurrentManager.useQuery();
   const photoUrl = managerProfile?.photoUrl ?? null;
+
+  // ── البيانات الحقيقية من السيرفر ────────────────────────────────────────────
+  const { data: visitsData } = trpc.visit.myHistory.useQuery({ limit: 200, offset: 0 });
+  const { data: branches = [] } = trpc.manager.getMyBranches.useQuery();
+
+  // مؤقت حي لتحديث مدة الزيارة الحالية كل دقيقة
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ── حسابات اليوم الفعلية ────────────────────────────────────────────────────
+  const visits = (visitsData?.items ?? []) as any[];
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const todayVisits = visits.filter((v) => new Date(v.checkInAt) >= todayStart);
+  const visitsToday = todayVisits.length;
+  const distanceTodayKm = todayVisits.reduce(
+    (acc, v) => acc + (parseFloat(v.distanceToPrevBranchKm) || 0),
+    0
+  );
+  const targetCount = Math.max(branches.length, 1);
+  const progressPct = Math.min(100, Math.round((visitsToday / targetCount) * 100));
+
+  // الزيارة الحالية المفتوحة — أهم معلومة في الشاشة
+  const activeVisit = visits.find((v: any) => v.status === "checked_in") ?? null;
+  const activeVisitDuration =
+    activeVisit ? formatDuration(now - new Date(activeVisit.checkInAt).getTime()) : "";
 
   return (
     <>
@@ -233,50 +280,107 @@ export default function ManagerDashboard() {
               </div>
             )}
             <div className="greeting">
-              <h2>Good Morning</h2>
-              <h1>{user?.username?.toUpperCase() || "USER"}</h1>
+              <h2 style={{ textTransform: 'none' }}>{getGreeting()} 👋</h2>
+              <h1 style={{ textTransform: 'none', letterSpacing: 0 }}>{user?.name || user?.username || "مدير"}</h1>
             </div>
           </div>
-          <button className="notification-btn">
-            <span className="material-symbols-outlined">notifications</span>
-          </button>
         </header>
+
+        {/* ── 🟢 كارت الزيارة الحالية — أهم معلومة في الشاشة ─────────────────── */}
+        {activeVisit && (
+          <Link
+            href="/check-in"
+            className="fade-up"
+            style={{
+              display: "block",
+              margin: "0 24px 20px",
+              padding: "18px 20px",
+              background: activeVisit.status === 'checked_in'
+                ? "linear-gradient(135deg, rgba(52,211,153,0.15) 0%, rgba(30,34,40,0.9) 100%)"
+                : "rgba(30,34,40,0.8)",
+              border: "1px solid rgba(52,211,153,0.4)",
+              borderRadius: 20,
+              textDecoration: "none",
+              color: "#fff",
+              position: "relative",
+              zIndex: 1,
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <span
+                className="relative flex h-3 w-3"
+                style={{ flexShrink: 0 }}
+              >
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34d399] opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-[#34d399]" />
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginBottom: 4 }}>
+                  زيارتك الحالية — داخل النطاق
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {activeVisit.branchName}
+                </div>
+              </div>
+              <div style={{ textAlign: "center", flexShrink: 0 }}>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "#34d399" }}>
+                  {activeVisitDuration}
+                </div>
+                <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)" }}>منذ الدخول</div>
+              </div>
+            </div>
+          </Link>
+        )}
 
         <div className="hero-banner fade-up" style={{ animationDelay: '0.1s' }}>
           <span className="material-symbols-outlined hero-icon">local_shipping</span>
           <div className="hero-content">
-            <h3>Ready for work?</h3>
-            <p>Track your daily visits and manage your routes efficiently.</p>
+            <h3>{activeVisit ? "شغال دلوقتي 💪" : "جاهز للشغل؟"}</h3>
+            <p style={{ maxWidth: "70%" }}>
+              {activeVisit
+                ? `انت في ${activeVisit.branchName} — بالتوفيق!`
+                : "ادخل أقرب فرع والتطبيق هيسجل دخولك تلقائياً."}
+            </p>
           </div>
         </div>
 
+        {/* ── 📊 إحصائيات اليوم — من الداتا الحقيقية ────────────────────────── */}
         <div className="stats-grid fade-up" style={{ animationDelay: '0.2s' }}>
           <div className="stat-card">
             <div className="stat-header">
-              <span>Progress</span>
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_right</span>
+              <span>زيارات اليوم</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>place</span>
             </div>
             <div className="stat-value">
-              12 <span className="stat-unit">Visits</span>
+              {visitsToday} <span className="stat-unit">من {branches.length}</span>
             </div>
             <div className="stat-bar">
-              <div className="stat-progress" style={{ width: '60%' }} />
+              <div className="stat-progress" style={{ width: `${progressPct}%` }} />
             </div>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>Daily Target: 20</span>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
+              فروعك المسندة النهاردة
+            </span>
           </div>
 
           <div className="stat-card">
             <div className="stat-header">
-              <span>Distance</span>
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>chevron_right</span>
+              <span>المسافة</span>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>route</span>
             </div>
             <div className="stat-value">
-              14.5 <span className="stat-unit">km</span>
+              {distanceTodayKm.toFixed(1)} <span className="stat-unit">كم</span>
             </div>
             <div className="stat-bar">
-              <div className="stat-progress" style={{ width: '40%', background: '#0fa5f8' }} />
+              <div
+                className="stat-progress"
+                style={{
+                  width: `${Math.min(100, Math.round((distanceTodayKm / 100) * 100))}%`,
+                  background: '#0fa5f8',
+                }}
+              />
             </div>
-            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>Total Distance</span>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>إجمالي تحركاتك اليوم</span>
           </div>
         </div>
 
@@ -285,24 +389,24 @@ export default function ManagerDashboard() {
             <div className="action-icon">
               <span className="material-symbols-outlined">location_on</span>
             </div>
-            <span className="action-text">Check-in & Locations</span>
-            <span className="material-symbols-outlined" style={{ color: 'rgba(255,255,255,0.3)' }}>chevron_right</span>
+            <span className="action-text">الفروع وتسجيل الحضور</span>
+            <span className="material-symbols-outlined" style={{ color: 'rgba(255,255,255,0.3)' }}>chevron_left</span>
           </Link>
 
           <Link href="/history" className="action-item">
             <div className="action-icon">
               <span className="material-symbols-outlined">history</span>
             </div>
-            <span className="action-text">Visit History</span>
-            <span className="material-symbols-outlined" style={{ color: 'rgba(255,255,255,0.3)' }}>chevron_right</span>
+            <span className="action-text">سجل الزيارات</span>
+            <span className="material-symbols-outlined" style={{ color: 'rgba(255,255,255,0.3)' }}>chevron_left</span>
           </Link>
 
           <Link href="/sync" className="action-item">
             <div className="action-icon" style={{ background: 'rgba(255,255,255,0.05)', color: '#fff' }}>
               <span className="material-symbols-outlined">sync</span>
             </div>
-            <span className="action-text">Sync Data</span>
-            <span className="material-symbols-outlined" style={{ color: 'rgba(255,255,255,0.3)' }}>chevron_right</span>
+            <span className="action-text">مركز المزامنة</span>
+            <span className="material-symbols-outlined" style={{ color: 'rgba(255,255,255,0.3)' }}>chevron_left</span>
           </Link>
         </div>
       </div>

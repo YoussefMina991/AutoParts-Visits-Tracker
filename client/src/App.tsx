@@ -27,7 +27,12 @@ import { ManagerBottomNav } from "./components/ManagerBottomNav";
 import { LocalNotifications } from "@capacitor/local-notifications";
 // ── Geofence Context — share the single GPS watcher with all pages ─────────
 interface GeofenceContextValue {
-  latestLocation: { lat: number; lon: number; isMocked: boolean } | null;
+  latestLocation: {
+    lat: number;
+    lon: number;
+    accuracy?: number;
+    isMocked: boolean;
+  } | null;
 }
 const GeofenceContext = createContext<GeofenceContextValue>({ latestLocation: null });
 export const useGeofenceContext = () => useContext(GeofenceContext);
