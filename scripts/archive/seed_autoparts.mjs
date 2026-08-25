@@ -1,8 +1,11 @@
 import mysql from "mysql2/promise";
 import bcrypt from "bcryptjs";
 
-const DATABASE_URL = process.env.DATABASE_URL ||
-  "mysql://root:VjEncCKEEnQjoPOwfPLpWIOvLHzbMvJm@sakura.proxy.rlwy.net:26201/railway";
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+  console.error("❌ DATABASE_URL is required (set it in .env)");
+  process.exit(1);
+}
 
 // ─── الفروع — بدون phone/region/mapUrl لأنهم مش في الـ schema ────────────────
 // latitude/longitude مطلوبين — حطينا إحداثيات تقريبية لكل فرع

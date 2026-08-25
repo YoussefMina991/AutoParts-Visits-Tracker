@@ -7,8 +7,13 @@
 
 import mysql from "mysql2/promise";
 
-const OLD_DB = "mysql://root:kWzxixsbgQXrFKyEdMUoSlzoxrstKhhg@hayabusa.proxy.rlwy.net:44464/railway";
-const NEW_DB = "mysql://root:VjEncCKEEnQjoPOwfPLpWIOvLHzbMvJm@sakura.proxy.rlwy.net:26201/railway";
+const OLD_DB = process.env.OLD_DATABASE_URL;
+const NEW_DB = process.env.DATABASE_URL;
+
+if (!OLD_DB || !NEW_DB) {
+  console.error("❌ OLD_DATABASE_URL and DATABASE_URL are required");
+  process.exit(1);
+}
 
 function parseUrl(url) {
   const u = new URL(url);

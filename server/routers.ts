@@ -10,11 +10,21 @@ import * as db from "./db";
 import { hashPassword } from "./auth";
 import { TRPCError } from "@trpc/server";
 
+// ── 🔒 إخفاء البيانات الحساسة قبل إرسال المستخدم للعميل ──────────────────────
+// (كان الـ passwordHash بيتبعت للموبايل مع كل طلب — ثغرة أمنية)
+function sanitizeUser<T extends { passwordHash?: string; boundDeviceId?: string | null }>(
+  user: T | null
+) {
+  if (!user) return null;
+  const { passwordHash: _ph, boundDeviceId: _bd, ...safe } = user;
+  return safe;
+}
+
 export const appRouter = router({
   system: systemRouter,
 
   auth: router({
-    me: publicProcedure.query(opts => opts.ctx.user),
+    me: publicProcedure.query(opts => sanitizeUser(opts.ctx.user)),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -24,7 +34,15 @@ export const appRouter = router({
 
   users: router({
     // قائمة كل المستخدمين
-    list: adminProcedure.query(() => db.listUsers()),
+    list: adminProcedure.query(async () => {
+      const users = await db.listUsers();
+      // نبعت للأدمن حالة الربط فقط بدون البصمة نفسها
+      return users.map((u) => ({
+        ...u,
+        isDeviceBound: Boolean(u.boundDeviceId),
+        boundDeviceId: undefined,
+      }));
+    }),
 
     // إنشاء مستخدم جديد
     create: adminProcedure
@@ -93,6 +111,21 @@ export const appRouter = router({
         if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "المستخدم غير موجود" });
 
         await db.deleteUser(input.id);
+        return { success: true };
+      }),
+
+    // 🔓 فك ربط جهاز مستخدم — يسمح له بتسجيل الدخول من موبايل جديد
+    // (الجهاز الجديد هيتربط تلقائياً بأول تسجيل دخول بعدها)
+    unbindDevice: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        const existing = await db.getUserById(input.id);
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "المستخدم غير موجود" });
+        if (!existing.boundDeviceId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "الحساب مش مربوط بجهاز أصلاً" });
+        }
+        await db.updateUser(input.id, { boundDeviceId: null, deviceBoundAt: null });
+        console.log(`[Auth] Admin ${ctx.user?.username} unbound device for user ${existing.username}`);
         return { success: true };
       }),
   }),

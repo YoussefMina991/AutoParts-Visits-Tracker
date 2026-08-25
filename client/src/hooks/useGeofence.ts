@@ -96,10 +96,22 @@ type PendingVisit = PendingCheckIn | PendingCheckOut;
 export let globalMockedStatus = false;
 
 // ─── Cooldown: يمنع check-in تلقائي متكرر لنفس الفرع ───────────────────────
-// مدة الـ cooldown: 3 دقائق
 // ✅ الإصلاح: يُخزَّن في Preferences (يبقى بعد إعادة فتح التطبيق)
 // بدلاً من Map في الـ memory (تُمسح عند إعادة الفتح → double check-in)
 const CHECK_IN_COOLDOWN_MS = 3 * 60 * 1000;
+// ✅ cooldown قصير بعد فشل المحاولة (شبكة ضعيفة مثلاً) — يمنع إعادة المحاولة العشوائية
+const CHECK_IN_FAILURE_COOLDOWN_MS = 60 * 1000;
+
+// ── ✅ إصلاح الخروج العشوائي: فلتر دقة الـ GPS ───────────────────────────────
+// أي قراءة بدقة أسوأ من 100 متر تُتجاهل تماماً — كانت السبب الرئيسي في
+// تسجيل خروج وهمي والمدير واقف مكانها (GPS ضعيف لحظياً)
+const MAX_GEOFENCE_ACCURACY_M = 100;
+// ✅ نأكد من قراءتين متتاليتين خارج النطاق قبل الـ check-out
+// (قراءة واحدة سيئة مش هتقطع الزيارة)
+const REQUIRED_OUTSIDE_READINGS = 2;
+
+// ── ✅ مزامنة نقاط التتبع كل دقيقة (كانت 5 دقايق → التتبع اللحظي كان بطيء) ──
+const LOCATION_SYNC_INTERVAL_MS = 60 * 1000;
 
 async function getCooldownKey(branchId: number): Promise<string> {
   return `checkin_cooldown_${branchId}`;
@@ -111,26 +123,18 @@ async function isBranchInCooldown(branchId: number): Promise<boolean> {
     const key = await getCooldownKey(branchId);
     const { value } = await Preferences.get({ key });
     if (!value) return false;
-    const lastAttempt = parseInt(value, 10);
-    return Date.now() - lastAttempt < CHECK_IN_COOLDOWN_MS;
+    // القيمة المخزنة هي وقت انتهاء الـ cooldown (مش وقت المحاولة)
+    return Date.now() < parseInt(value, 10);
   } catch {
     return false; // لو فشل الـ Preferences → اسمح بالـ check-in
   }
 }
 
-async function setBranchCooldown(branchId: number): Promise<void> {
+async function setBranchCooldown(branchId: number, durationMs: number = CHECK_IN_COOLDOWN_MS): Promise<void> {
   try {
     const { Preferences } = await import("@capacitor/preferences");
     const key = await getCooldownKey(branchId);
-    await Preferences.set({ key, value: Date.now().toString() });
-  } catch { /* silent */ }
-}
-
-async function clearBranchCooldown(branchId: number): Promise<void> {
-  try {
-    const { Preferences } = await import("@capacitor/preferences");
-    const key = await getCooldownKey(branchId);
-    await Preferences.remove({ key });
+    await Preferences.set({ key, value: (Date.now() + durationMs).toString() });
   } catch { /* silent */ }
 }
 
@@ -140,7 +144,8 @@ const ONLINE_TOAST_DEBOUNCE_MS = 10_000;
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 export function useGeofence() {
-  const { data: branches = [] } = trpc.manager.getMyBranches.useQuery();
+  const { data: branches = [], isSuccess: branchesLoaded } =
+    trpc.manager.getMyBranches.useQuery();
   const { data: historyData, refetch: refetchHistory, isLoading: historyLoading } =
     trpc.visit.myHistory.useQuery({ limit: 1, offset: 0 });
 
@@ -339,6 +344,12 @@ export function useGeofence() {
 
   const recentPositionsRef = useRef<{ lat: number; lng: number }[]>([]);
 
+  // ── ✅ عدّاد القراءات الخارجية لكل فرع (لتأكيد الخروج بقراءتين) ─────────────
+  const outsideCountRef = useRef<Map<number, number>>(new Map());
+
+  // ── ✅ آخر وقت اتعملت فيه مزامنة لنقاط التتبع (كل دقيقة بدل 5) ─────────────
+  const lastLocationSyncAtRef = useRef(0);
+
   // ── Handle a position update ───────────────────────────────────────────────
   const handlePositionUpdate = useCallback(async (
     currentLat: number,
@@ -346,9 +357,16 @@ export function useGeofence() {
     accuracy?: number,
     isMocked?: boolean,
   ) => {
+    // ✅ إصلاح حرج: تجاهل القراءات سيئة الدقة تماماً
+    // (GPS ضعيف لحظياً كان بيخلي النظام يفتكر المدير خرج من الفرع وهو واقف مكانه)
+    if (accuracy !== undefined && accuracy > MAX_GEOFENCE_ACCURACY_M) {
+      console.debug(`[Geofence] Skipping inaccurate fix (${accuracy}m > ${MAX_GEOFENCE_ACCURACY_M}m)`);
+      return;
+    }
+
     const detectedMock = checkIsMocked(accuracy, !!isMocked, currentLat, currentLng);
     globalMockedStatus = detectedMock;
-    
+
     setLatestLocation({ lat: currentLat, lon: currentLng, isMocked: detectedMock });
     if (historyLoadingRef.current) return;
 
@@ -362,7 +380,13 @@ export function useGeofence() {
     });
     await locationStore.setItem("queue", pendingLocs);
 
-    // ⚡ لا نستدعي syncAll مع كل GPS update — تحدث تلقائياً كل 5 دقايق / foreground / online
+    // ⚡✅ مزامنة نقاط التتبع كل دقيقة (مدفوعة بتحديثات GPS الأصلية —
+    // بتشتغل حتى لو الـ WebView throttled في الخلفية، عكس setInterval)
+    const now = Date.now();
+    if (isOnline() && now - lastLocationSyncAtRef.current >= LOCATION_SYNC_INTERVAL_MS) {
+      lastLocationSyncAtRef.current = now;
+      syncOfflineDataRef.current(); // fire-and-forget — مش بنوقف المنطق عليها
+    }
 
     const currentBranches = branchesRef.current;
 
@@ -370,7 +394,7 @@ export function useGeofence() {
     const serverActiveVisit = activeVisitRef.current;
     const localActiveVisit = await getLocalActiveVisit();
 
-    // ── 2. Auto check-out ──────────────────────────────────────────────────
+    // ── 2. Auto check-out (بعد تأكيد قراءتين خارج النطاق) ──────────────────
     if (serverActiveVisit) {
       const activeBranch = currentBranches.find((b) => b.id === serverActiveVisit.branchId);
       if (activeBranch?.latitude && activeBranch?.longitude) {
@@ -380,11 +404,19 @@ export function useGeofence() {
           parseFloat(activeBranch.longitude)
         );
         if (dist > (activeBranch.geofenceRadiusMeters || 200) + 50) {
+          // ✅ نحتاج قراءتين متتاليتين خارج النطاق قبل ما نسجل خروج
+          const count = (outsideCountRef.current.get(activeBranch.id) ?? 0) + 1;
+          outsideCountRef.current.set(activeBranch.id, count);
+          if (count < REQUIRED_OUTSIDE_READINGS) return;
+
+          outsideCountRef.current.delete(activeBranch.id);
           if (isOnline()) {
             try {
               await checkOutMutationRef.current.mutateAsync({ visitId: serverActiveVisit.id });
               toast.info(`🔴 تسجيل خروج تلقائي من ${activeBranch.name}`);
               refetchHistoryRef.current();
+              // ⚡ ابعت نقاط التتبع فوراً مع الحدث
+              syncOfflineDataRef.current();
             } catch { /* ignore */ }
           } else {
             // ✅ بنبعت checkInAt عشان السيرفر يقدر يحسب المدة صح
@@ -402,6 +434,9 @@ export function useGeofence() {
             await setPendingVisits(pending);
             toast.info(`🔴 خروج مؤقت من ${activeBranch.name} — سيُرسل لما النت يرجع`);
           }
+        } else {
+          // رجعنا جوه النطاق → صفّر العداد
+          outsideCountRef.current.delete(activeBranch.id);
         }
       }
       return;
@@ -416,6 +451,11 @@ export function useGeofence() {
           parseFloat(activeBranch.longitude)
         );
         if (dist > (activeBranch.geofenceRadiusMeters || 200) + 50) {
+          const count = (outsideCountRef.current.get(activeBranch.id) ?? 0) + 1;
+          outsideCountRef.current.set(activeBranch.id, count);
+          if (count < REQUIRED_OUTSIDE_READINGS) return;
+
+          outsideCountRef.current.delete(activeBranch.id);
           const pending = await getPendingVisits();
           pending.push({
             type: "check_out",
@@ -426,6 +466,8 @@ export function useGeofence() {
           });
           await setPendingVisits(pending);
           toast.info(`🔴 خروج مؤقت من ${activeBranch.name} — سيُرسل لما النت يرجع`);
+        } else {
+          outsideCountRef.current.delete(activeBranch.id);
         }
       }
       return;
@@ -457,14 +499,16 @@ export function useGeofence() {
             });
             toast.success(`✅ تسجيل دخول تلقائي في ${branch.name}`);
             refetchHistoryRef.current();
+            // ⚡ ابعت نقاط التتبع فوراً مع الحدث
+            syncOfflineDataRef.current();
           } catch (err: any) {
             if (err.message?.includes("Already checked")) {
               // المستخدم محسوب عليه check-in بالفعل — حدِّث الحالة فقط
               refetchHistoryRef.current();
             } else {
-              toast.error(`❌ فشل الدخول: ${err.message || String(err)}`);
-              // امسح الـ cooldown عشان يحاول تاني في المرة الجاية
-              await clearBranchCooldown(branch.id);
+              // ✅ cooldown قصير (دقيقة) بدل مسحه — يمنع إعادة المحاولة العشوائية
+              // وToast spam لما الشبكة ضعيفة، مع إعادة المحاولة سريعاً نسبياً
+              await setBranchCooldown(branch.id, CHECK_IN_FAILURE_COOLDOWN_MS);
             }
           }
         } else {
@@ -490,10 +534,10 @@ export function useGeofence() {
   }, []); // جميع المتغيرات تمر عبر refs — لا داعي لإعادة الإنشاء
 
   // ── Setup geolocation watcher (native or web) ─────────────────────────────
-  // يُشغَّل مرة واحدة فقط عندما تصبح branches متاحة (branches.length > 0)
-  // لا يعيد التشغيل بسبب تغيُّر handlePositionUpdate أو syncAll لأنهم refs
+  // ✅ يُشغَّل أول ما يخلص تحميل الفروع — حتى لو المدير معندوش فروع متسابَة،
+  // عشان نقاط التتبع (breadcrumbs) توصل للتتبع اللحظي عند الأدمن
   useEffect(() => {
-    if (branches.length === 0) return;
+    if (!branchesLoaded) return;
     // لا تُنشئ watcher ثاني لو الأول شغّال
     if (watcherStartedRef.current) return;
     watcherStartedRef.current = true;
@@ -603,7 +647,7 @@ export function useGeofence() {
       window.removeEventListener("online", handleOnline);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branches.length > 0 ? 1 : 0]); // يُشغَّل مرة واحدة فقط
+  }, [branchesLoaded ? 1 : 0]); // يُشغَّل مرة واحدة فقط أول ما الاستعلام يخلص
 
   return { latestLocation };
 }

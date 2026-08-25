@@ -1,0 +1,46 @@
+[
+  {
+    "id": 1,
+    "username": "admin",
+    "passwordHash": "100000:de07b6348cbd87989cb41bfedbce56b232be00d520c3b57cb97706ee6323885f:e7e10e3b346b800a3675e74058d914d84d70e49d8b64d6b8b7eef9729ca9bc226f12617b0897a0085e56d15e61a85d492d89e0fef16689f3a13a252daf433763",
+    "name": "مدير النظام",
+    "email": null,
+    "role": "admin",
+    "createdAt": "2026-08-05T19:53:11.000Z",
+    "updatedAt": "2026-08-21T15:49:13.000Z",
+    "lastSignedIn": "2026-08-21T15:49:13.000Z"
+  },
+  {
+    "id": 28,
+    "username": "mohamed",
+    "passwordHash": "100000:78d198be92cc294b8c1a535f453ad3885361861f2d50c56dcb62f5aacdaa9b67:4d1ed3e879e3d9735033be8ec00236a5942b95a8aa62ca77f9672c306a46c0c1cb6c73feabf032d2e4941dd1ebf9b993ccdfff7144f01cbf50a27cde35de5a25",
+    "name": "Mohamed Abd Elsattar",
+    "email": null,
+    "role": "user",
+    "createdAt": "2026-08-22T07:05:03.000Z",
+    "updatedAt": "2026-08-24T09:04:12.000Z",
+    "lastSignedIn": "2026-08-24T09:04:13.000Z"
+  },
+  {
+    "id": 29,
+    "username": "ahmed",
+    "passwordHash": "100000:26d4abfe47eab1f3cf2b908c7606ac9ef632481799ddc5f1d87cfa11cc43cdcf:838af0ce8ea1b0ecd585cc86babc7f67d778f8529a5c843d87da44980c33e3f1f3fe6039d94a653f9a2c26dd09d4add039f4325ebd3da86ae3f09e32536d40cb",
+    "name": "Ahmed Othman",
+    "email": null,
+    "role": "user",
+    "createdAt": "2026-08-22T07:05:15.000Z",
+    "updatedAt": "2026-08-22T07:05:15.000Z",
+    "lastSignedIn": "2026-08-22T07:05:15.000Z"
+  },
+  {
+    "id": 30,
+    "username": "youssef",
+    "passwordHash": "100000:6f5c9f6a1c3d4a9f245b032825fb8bdd9a13e3ae99da412ab50ce89ca6f22321:d01be1c8690c580ef1ffbc19a86298e92ef875acaf19b715b0b7d2ac44d37606fcbcd96c8cb2e82aabd84e60e302b8abf03a0bf229d288207f615ba07a3851bf",
+    "name": "Youssef Mina",
+    "email": null,
+    "role": "user",
+    "createdAt": "2026-08-23T05:56:37.000Z",
+    "updatedAt": "2026-08-23T05:56:37.000Z",
+    "lastSignedIn": "2026-08-23T05:56:37.000Z"
+  }
+]

@@ -160,6 +160,10 @@ export default function AdminUsers() {
     id: number;
     name: string;
   } | null>(null);
+  const [unbindTarget, setUnbindTarget] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   const {
     data: users = [],
@@ -191,6 +195,16 @@ export default function AdminUsers() {
       refetch();
       setDeleteOpen(false);
       setDeleteTarget(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // 🔓 فك ربط الجهاز — يسمح للمستخدم بتسجيل الدخول من موبايل جديد
+  const unbindMutation = trpc.users.unbindDevice.useMutation({
+    onSuccess: () => {
+      toast.success("تم فك ربط الجهاز — المستخدم هيسجل دخول من موبايله الجديد وهيتربط تلقائياً");
+      refetch();
+      setUnbindTarget(null);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -438,6 +452,25 @@ export default function AdminUsers() {
                         >
                           {isAdminUser ? "أدمن" : "مدير فرع"}
                         </span>
+                        {/* 🔒 حالة ربط الجهاز — للمديرين فقط */}
+                        {!isAdminUser && (
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
+                            style={{
+                              background: u.isDeviceBound ? "#EFF6FF" : "#FEFCE8",
+                              color: u.isDeviceBound ? "#2563EB" : "#A16207",
+                            }}
+                            title={u.isDeviceBound ? "الحساب مربوط بموبايل محدد" : "لسه مسجلش دخول من أي موبايل"}
+                          >
+                            <span
+                              className="material-symbols-outlined"
+                              style={{ fontSize: 11 }}
+                            >
+                              {u.isDeviceBound ? "smartphone" : "smartphone_question"}
+                            </span>
+                            {u.isDeviceBound ? "جهاز مربوط" : "بدون جهاز"}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-3 flex-wrap">
                         {u.email && (
@@ -465,6 +498,23 @@ export default function AdminUsers() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {/* 🔓 فك ربط الجهاز — للمديرين المربوطين فقط */}
+                    {!isAdminUser && u.isDeviceBound && (
+                      <button
+                        onClick={() =>
+                          setUnbindTarget({ id: u.id, name: u.name ?? u.username })
+                        }
+                        title="فك ربط الجهاز (للسماح بموبايل جديد)"
+                        className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[#EFF6FF] cursor-pointer"
+                      >
+                        <span
+                          className="material-symbols-outlined"
+                          style={{ fontSize: 16, color: "#2563EB" }}
+                        >
+                          link_off
+                        </span>
+                      </button>
+                    )}
                     <button
                       onClick={() => handleEdit(u)}
                       className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[#F4F4F5] cursor-pointer"
@@ -831,6 +881,78 @@ export default function AdminUsers() {
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               )}
               نعم، احذف
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── 🔓 Unbind Device Dialog ─────────────────────────────────────────── */}
+      <Dialog open={!!unbindTarget} onOpenChange={(open) => !open && setUnbindTarget(null)}>
+        <DialogContent
+          className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
+          style={{ background: "#fff", border: "1px solid #E4E4E7" }}
+        >
+          <DialogHeader
+            className="px-6 py-4"
+            style={{ borderBottom: "1px solid #F4F4F5" }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: "#EFF6FF" }}
+              >
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 18, color: "#2563EB" }}
+                >
+                  link_off
+                </span>
+              </div>
+              <DialogTitle
+                className="text-[15px] font-bold"
+                style={{ color: "#18181B" }}
+              >
+                فك ربط الجهاز
+              </DialogTitle>
+            </div>
+          </DialogHeader>
+
+          <div className="px-6 py-5">
+            <p className="text-[13px] leading-relaxed" style={{ color: "#71717A" }}>
+              سيتم فك ربط جهاز المستخدم{" "}
+              <strong style={{ color: "#18181B" }}>{unbindTarget?.name}</strong>.
+              أول ما يسجل دخول من موبايله الجديد هيتربط بيه تلقائياً، ومش هينفع
+              يدخل من أي موبايل تاني غيره.
+            </p>
+          </div>
+
+          <DialogFooter
+            className="px-6 py-4 flex items-center justify-end gap-2"
+            style={{ borderTop: "1px solid #F4F4F5" }}
+          >
+            <button
+              onClick={() => setUnbindTarget(null)}
+              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
+              style={{ color: "#71717A" }}
+            >
+              إلغاء
+            </button>
+            <button
+              onClick={() =>
+                unbindTarget && unbindMutation.mutate({ id: unbindTarget.id })
+              }
+              disabled={unbindMutation.isPending}
+              className="h-9 px-5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
+              style={{
+                background: "#EFF6FF",
+                border: "1px solid #BFDBFE",
+                color: "#2563EB",
+              }}
+            >
+              {unbindMutation.isPending && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              )}
+              نعم، افك الربط
             </button>
           </DialogFooter>
         </DialogContent>

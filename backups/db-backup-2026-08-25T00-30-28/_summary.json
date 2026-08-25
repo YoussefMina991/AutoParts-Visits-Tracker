@@ -1,0 +1,30 @@
+{
+  "date": "2026-08-25T00:30:32.123Z",
+  "totalRows": 1445,
+  "tables": [
+    {
+      "table": "branches",
+      "rows": 45
+    },
+    {
+      "table": "locationLogs",
+      "rows": 1310
+    },
+    {
+      "table": "managerBranches",
+      "rows": 81
+    },
+    {
+      "table": "managers",
+      "rows": 3
+    },
+    {
+      "table": "users",
+      "rows": 4
+    },
+    {
+      "table": "visits",
+      "rows": 2
+    }
+  ]
+}

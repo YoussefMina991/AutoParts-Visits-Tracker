@@ -8,9 +8,22 @@ import { getDistanceMeters } from "../shared/utils";
 import { getBranchDistance } from "../shared/gizaBranchDistances";
 import { notifyOwner } from "./_core/notification";
 
+// ── Schemas مشتركة ────────────────────────────────────────────────────────────
+const coordSchema = z.string().regex(/^-?\d{1,3}(\.\d+)?$/, "invalid coordinate");
+
+type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
+type ManagerRow = typeof managers.$inferSelect;
+type BranchRow = typeof branches.$inferSelect;
+
+interface VisitForCheckout {
+  id: number;
+  checkInAt: Date;
+  branchName: string;
+}
+
 // ── دالة مساعدة: احسب المسافة من الفرع السابق (أي زيارة مكتملة في نفس اليوم) ─
 async function calcDistanceFromPrevBranch(
-  db: Awaited<ReturnType<typeof getDb>>,
+  db: Db,
   managerId: number,
   currentBranchName: string,
   referenceTime: Date,
@@ -57,19 +70,100 @@ function isTeleportation(km: number, timeDiffMin: number): boolean {
   return speedKmh > 80;
 }
 
+// ── 🎯 الدالة الموحدة لإغلاق زيارة (كانت منسوخة 3 مرات — دلوقتي مرة واحدة) ──
+// بتستخدمها: checkOut + nativeCheckOut + syncOfflineVisits
+async function finalizeCheckOut(
+  db: Db,
+  managerId: number,
+  visit: VisitForCheckout,
+  checkOutTime: Date,
+): Promise<{ durationMin: number; distanceKm: number | null; isTeleporting: boolean }> {
+  const durationMin = (checkOutTime.getTime() - visit.checkInAt.getTime()) / 60_000;
+
+  // المسافة والـ Teleportation بيتحسبوا دايماً بغض النظر عن المدة
+  let distanceToPrevBranchKm: number | undefined;
+  let isTeleporting = false;
+
+  const prevResult = await calcDistanceFromPrevBranch(db, managerId, visit.branchName, visit.checkInAt);
+  if (prevResult !== null) {
+    distanceToPrevBranchKm = prevResult.km;
+    // إعادة فحص Teleportation كـ double-check (الأساسي بيحصل وقت checkIn)
+    if (isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
+      isTeleporting = true;
+    }
+  }
+
+  // ── 🚨 كشف الزيارة القصيرة جداً ────────────────────────────────────────
+  // أقل من 3 دقايق = مشبوه جداً (نقاط عالية) / أقل من 7 دقايق = مشبوه (نقاط متوسطة)
+  let shortVisitScore = 0;
+  let shortVisitReason: string | null = null;
+  if (durationMin < 3) {
+    shortVisitScore = 80;
+    shortVisitReason = `SHORT_VISIT:${Math.round(durationMin * 60)}sec`;
+  } else if (durationMin < 7) {
+    shortVisitScore = 40;
+    shortVisitReason = `SHORT_VISIT:${Math.round(durationMin)}min`;
+  }
+
+  // نجيب الـ suspicionScore الحالي من الداتابيز عشان نجمع عليه
+  const currentVisitData = await db.select({
+    suspicionScore: visits.suspicionScore,
+    mockReasons: visits.mockReasons,
+  }).from(visits).where(eq(visits.id, visit.id)).limit(1);
+
+  const existingScore   = currentVisitData[0]?.suspicionScore ?? 0;
+  const existingReasons: string[] = (() => {
+    try { return JSON.parse(currentVisitData[0]?.mockReasons ?? "[]"); } catch { return []; }
+  })();
+
+  const finalScore   = existingScore + shortVisitScore; // teleport score اتحسب وقت checkIn
+  const finalReasons = shortVisitReason ? [...existingReasons, shortVisitReason] : existingReasons;
+  const isShortMocked = shortVisitScore >= 80; // أقل من 3 دقايق → وهمي مباشرة
+
+  // لا نكتب "no" أبداً — فقط "yes" إذا اكتشفنا teleporting أو زيارة قصيرة جداً
+  const mockedUpdate = (isTeleporting || isShortMocked)
+    ? { isMocked: "yes" as const }
+    : {};
+
+  await db.update(visits).set({
+    checkOutAt: checkOutTime,
+    status: "checked_out",
+    ...mockedUpdate,
+    ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm: distanceToPrevBranchKm.toString() } : {}),
+    ...(shortVisitScore > 0 ? {
+      suspicionScore: finalScore,
+      mockReasons: JSON.stringify(finalReasons),
+    } : {}),
+  }).where(and(
+    eq(visits.id, visit.id),
+    eq(visits.managerId, managerId),
+  ));
+
+  return {
+    durationMin,
+    distanceKm: distanceToPrevBranchKm ?? null,
+    isTeleporting,
+  };
+}
+
+async function getManagerName(db: Db, userId: number): Promise<string> {
+  const rows = await db.select({ name: users.name }).from(users).where(eq(users.id, userId)).limit(1);
+  return rows[0]?.name ?? "مدير غير معروف";
+}
+
 export const visitRouter = router({
   // POST — manager checks in to a branch
   checkIn: protectedProcedure
     .input(z.object({
-      branchId: z.number(),
-      latitude: z.string(),
-      longitude: z.string(),
-      accuracy: z.string().optional(),
-      photoBase64: z.string().optional(),
-      notes: z.string().optional(),
+      branchId: z.number().int().positive(),
+      latitude: coordSchema,
+      longitude: coordSchema,
+      accuracy: z.string().max(32).optional(),
+      photoBase64: z.string().max(6_000_000).optional(),
+      notes: z.string().max(1000).optional(),
       isMocked: z.boolean().optional(),
-      suspicionScore: z.number().optional(),
-      mockReasons: z.array(z.string()).optional(),
+      suspicionScore: z.number().int().min(0).max(10_000).optional(),
+      mockReasons: z.array(z.string().max(200)).max(20).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -117,12 +211,11 @@ export const visitRouter = router({
       }
 
       const finalIsMocked = input.isMocked || isTeleporting;
-      
+
       const combinedReasons = [...(input.mockReasons || []), ...teleportReasons];
       const finalReasons  = combinedReasons.length > 0 ? JSON.stringify(combinedReasons) : null;
       const finalScore = (input.suspicionScore || 0) + (isTeleporting ? 100 : 0);
 
-      // ✅ المسافة هتتحسب وقت الـ Check-Out مش هنا — بنحفظ distanceToPrevBranchKm = null دلوقتي
       await db.insert(visits).values({
         managerId: manager.id, branchId: input.branchId,
         latitudeIn: input.latitude, longitudeIn: input.longitude,
@@ -136,8 +229,7 @@ export const visitRouter = router({
 
       // 🚨 لو الزيارة وهمية — ابعت إشعار فوري للأدمن
       if (finalIsMocked) {
-        const managerName = (await db.select({ name: users.name })
-          .from(users).where(eq(users.id, ctx.user!.id)).limit(1))[0]?.name ?? "مدير غير معروف";
+        const managerName = await getManagerName(db, ctx.user!.id);
         notifyOwner({
           title: "🚨 زيارة وهمية مكتشفة",
           content: `المدير: ${managerName}\nالفرع: ${branch.name}\nالوقت: ${new Date().toLocaleString("ar-EG")}\n${isTeleporting ? "تم اكتشاف انتقال غير منطقي (Teleportation)" : "تحديد موقع وهمي"}`,
@@ -150,7 +242,7 @@ export const visitRouter = router({
   // POST — Android native background service checkout (accepts branchId, looks up the active visitId itself)
   // Used by NativeGeofenceEngine.java which only knows the branchId, not the visitId
   nativeCheckOut: protectedProcedure
-    .input(z.object({ branchId: z.number() }))
+    .input(z.object({ branchId: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
@@ -178,81 +270,19 @@ export const visitRouter = router({
         return { success: true, skipped: true };
       }
 
-      const now = new Date();
-      const visit = activeVisit[0];
-      const durationMin = (now.getTime() - visit.checkInAt.getTime()) / 60_000;
-
-      // المسافة بتتحسب دايماً — بغض النظر عن المدة
-      let distanceToPrevBranchKm: number | undefined;
-      let isTeleporting = false;
-
-      const prevResult = await calcDistanceFromPrevBranch(db, manager.id, visit.branchName, visit.checkInAt);
-      if (prevResult !== null) {
-        distanceToPrevBranchKm = prevResult.km;
-        // إعادة فحص Teleportation هنا كـ double-check (الأساسي بيحصل وقت checkIn)
-        if (isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
-          isTeleporting = true;
-        }
-      }
-
-      // ── 🚨 كشف الزيارة القصيرة جداً ────────────────────────────────────────
-      // أقل من 3 دقايق = مشبوه جداً (نقاط عالية)
-      // أقل من 7 دقايق = مشبوه (نقاط متوسطة)
-      let shortVisitScore = 0;
-      let shortVisitReason: string | null = null;
-      if (durationMin < 3) {
-        shortVisitScore = 80;
-        shortVisitReason = `SHORT_VISIT:${Math.round(durationMin * 60)}sec`;
-      } else if (durationMin < 7) {
-        shortVisitScore = 40;
-        shortVisitReason = `SHORT_VISIT:${Math.round(durationMin)}min`;
-      }
-
-      // نجيب الـ suspicionScore الحالي من الداتابيز عشان نجمع عليه
-      const currentVisitData = await db.select({
-        suspicionScore: visits.suspicionScore,
-        mockReasons: visits.mockReasons,
-      }).from(visits).where(eq(visits.id, visit.id)).limit(1);
-
-      const existingScore   = currentVisitData[0]?.suspicionScore ?? 0;
-      const existingReasons: string[] = (() => {
-        try { return JSON.parse(currentVisitData[0]?.mockReasons ?? "[]"); } catch { return []; }
-      })();
-
-      const finalScore   = existingScore + shortVisitScore; // teleport score اتحسب وقت checkIn
-      const finalReasons = shortVisitReason ? [...existingReasons, shortVisitReason] : existingReasons;
-      const isShortMocked = shortVisitScore >= 80; // أقل من 3 دقايق → وهمي مباشرة
-
-      // نفس المنطق: لا نكتب "no" أبداً — فقط "yes" إذا اكتشفنا teleporting أو زيارة قصيرة جداً
-      const nativeCheckOutMockedUpdate = (isTeleporting || isShortMocked)
-        ? { isMocked: "yes" as const }
-        : {};
-
-      await db.update(visits).set({
-        checkOutAt: now,
-        status: "checked_out",
-        ...nativeCheckOutMockedUpdate,
-        ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm: distanceToPrevBranchKm.toString() } : {}),
-        ...(shortVisitScore > 0 ? {
-          suspicionScore: finalScore,
-          mockReasons: JSON.stringify(finalReasons),
-        } : {}),
-      }).where(and(
-        eq(visits.id, visit.id),
-        eq(visits.managerId, manager.id),
-      ));
+      const result = await finalizeCheckOut(db, manager.id, activeVisit[0], new Date());
 
       return {
         success: true,
         skipped: false,
-        durationMin: Math.round(durationMin),
-        distanceRecorded: distanceToPrevBranchKm ?? null,
+        durationMin: Math.round(result.durationMin),
+        distanceRecorded: result.distanceKm,
       };
     }),
 
   // POST — manager checks out
   checkOut: protectedProcedure
-    .input(z.object({ visitId: z.number() }))
+    .input(z.object({ visitId: z.number().int().positive() }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
@@ -279,92 +309,39 @@ export const visitRouter = router({
 
       const now = new Date();
       const visit = visitResult[0];
-      const durationMin = (now.getTime() - visit.checkInAt.getTime()) / 60_000;
-
-      // المسافة والـ Teleportation بيتحسبوا دايماً بغض النظر عن المدة
-      let distanceToPrevBranchKm: number | undefined;
-      let isTeleporting = false;
-
-      const prevResult = await calcDistanceFromPrevBranch(db, manager.id, visit.branchName, visit.checkInAt);
-      if (prevResult !== null) {
-        distanceToPrevBranchKm = prevResult.km;
-        if (isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
-          isTeleporting = true;
-        }
-      }
-
-      // ── 🚨 كشف الزيارة القصيرة جداً ────────────────────────────────────────
-      let shortVisitScore = 0;
-      let shortVisitReason: string | null = null;
-      if (durationMin < 3) {
-        shortVisitScore = 80;
-        shortVisitReason = `SHORT_VISIT:${Math.round(durationMin * 60)}sec`;
-      } else if (durationMin < 7) {
-        shortVisitScore = 40;
-        shortVisitReason = `SHORT_VISIT:${Math.round(durationMin)}min`;
-      }
-
-      const currentVisitData = await db.select({
-        suspicionScore: visits.suspicionScore,
-        mockReasons: visits.mockReasons,
-      }).from(visits).where(eq(visits.id, input.visitId)).limit(1);
-
-      const existingScore   = currentVisitData[0]?.suspicionScore ?? 0;
-      const existingReasons: string[] = (() => {
-        try { return JSON.parse(currentVisitData[0]?.mockReasons ?? "[]"); } catch { return []; }
-      })();
-
-      const finalScore   = existingScore + shortVisitScore;
-      const finalReasons = shortVisitReason ? [...existingReasons, shortVisitReason] : existingReasons;
-      const isShortMocked = shortVisitScore >= 80;
-
-      // isMocked: لو اكتشفنا teleporting أو زيارة قصيرة جداً → "yes" / لو لأ → نحافظ على قرار check-in
-      const checkOutMockedUpdate = (isTeleporting || isShortMocked)
-        ? { isMocked: "yes" as const }
-        : {};
-
-      await db.update(visits).set({
-        checkOutAt: now,
-        status: "checked_out",
-        ...checkOutMockedUpdate,
-        ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm: distanceToPrevBranchKm.toString() } : {}),
-        ...(shortVisitScore > 0 ? {
-          suspicionScore: finalScore,
-          mockReasons: JSON.stringify(finalReasons),
-        } : {}),
-      }).where(and(
-        eq(visits.id, input.visitId),
-        eq(visits.managerId, manager.id),
-      ));
+      const result = await finalizeCheckOut(db, manager.id, visit, now);
 
       // 🚨 إشعار للأدمن — teleporting أو زيارة قصيرة جداً
-      const managerName = (await db.select({ name: users.name })
-        .from(users).where(eq(users.id, ctx.user!.id)).limit(1))[0]?.name ?? "مدير غير معروف";
-
-      if (isTeleporting) {
+      if (result.isTeleporting) {
+        const managerName = await getManagerName(db, ctx.user!.id);
         notifyOwner({
           title: "🚨 انتقال وهمي مكتشف (Teleportation)",
-          content: `المدير: ${managerName}\nالفرع: ${visit.branchName}\nالمسافة: ${distanceToPrevBranchKm?.toFixed(1)} كم في ${Math.round(prevResult!.timeDiffMin)} دقيقة\nالوقت: ${now.toLocaleString("ar-EG")}`,
+          content: `المدير: ${managerName}\nالفرع: ${visit.branchName}\nالمسافة: ${result.distanceKm?.toFixed(1) ?? "?"} كم\nالوقت: ${now.toLocaleString("ar-EG")}`,
         }).catch(() => {});
       }
 
+      const isShortMocked = result.durationMin < 3;
       if (isShortMocked) {
+        const managerName = await getManagerName(db, ctx.user!.id);
         notifyOwner({
           title: "🚨 زيارة قصيرة مشبوهة",
-          content: `المدير: ${managerName}\nالفرع: ${visit.branchName}\nمدة الزيارة: ${Math.round(durationMin * 60)} ثانية فقط\nالوقت: ${now.toLocaleString("ar-EG")}`,
+          content: `المدير: ${managerName}\nالفرع: ${visit.branchName}\nمدة الزيارة: ${Math.round(result.durationMin * 60)} ثانية فقط\nالوقت: ${now.toLocaleString("ar-EG")}`,
         }).catch(() => {});
       }
 
       return {
         success: true,
-        durationMin: Math.round(durationMin),
-        distanceRecorded: distanceToPrevBranchKm ?? null,
+        durationMin: Math.round(result.durationMin),
+        distanceRecorded: result.distanceKm,
       };
     }),
 
   // GET — current manager's visit history
   myHistory: protectedProcedure
-    .input(z.object({ limit: z.number().default(50), offset: z.number().default(0) }))
+    .input(z.object({
+      limit: z.number().int().min(1).max(500).default(50),
+      offset: z.number().int().min(0).default(0),
+    }))
     .query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
@@ -388,12 +365,12 @@ export const visitRouter = router({
   // GET — admin: all visits with filters
   adminList: adminProcedure
     .input(z.object({
-      managerId: z.number().optional(),
-      branchId: z.number().optional(),
-      startDate: z.string().optional(),
-      endDate: z.string().optional(),
-      limit: z.number().default(100),
-      offset: z.number().default(0),
+      managerId: z.number().int().positive().optional(),
+      branchId: z.number().int().positive().optional(),
+      startDate: z.string().max(32).optional(),
+      endDate: z.string().max(32).optional(),
+      limit: z.number().int().min(1).max(1000).default(100),
+      offset: z.number().int().min(0).default(0),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -459,7 +436,7 @@ export const visitRouter = router({
 
   // GET — recent visits for dashboard
   recentVisits: adminProcedure
-    .input(z.object({ limit: z.number().default(5) }))
+    .input(z.object({ limit: z.number().int().min(1).max(50).default(5) }))
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
@@ -502,24 +479,24 @@ export const visitRouter = router({
       visits: z.array(z.discriminatedUnion("type", [
         z.object({
           type: z.literal("check_in"),
-          branchId: z.number(),
-          branchName: z.string(),
-          latitude: z.string(),
-          longitude: z.string(),
-          accuracy: z.string().optional(),
-          checkInAt: z.string(),
-          localId: z.string(),
+          branchId: z.number().int().positive(),
+          branchName: z.string().max(255),
+          latitude: coordSchema,
+          longitude: coordSchema,
+          accuracy: z.string().max(32).optional(),
+          checkInAt: z.string().datetime({ offset: true }),
+          localId: z.string().max(128),
           isMocked: z.boolean().optional(),
         }),
         z.object({
           type: z.literal("check_out"),
-          localCheckInId: z.string(),
-          serverVisitId: z.number().optional(),
-          branchName: z.string(),
-          checkOutAt: z.string(),
-          checkInAt: z.string(),    // ✅ مضاف: محتاجه نحسب المدة
+          localCheckInId: z.string().max(128),
+          serverVisitId: z.number().int().positive().optional(),
+          branchName: z.string().max(255),
+          checkOutAt: z.string().datetime({ offset: true }),
+          checkInAt: z.string().datetime({ offset: true }),
         }),
-      ])),
+      ])).max(50),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -563,7 +540,6 @@ export const visitRouter = router({
           // ✅ check-in offline: فحص Teleportation + mock detection
           const ciReasons: string[] = [];
 
-          // فحص Teleportation للزيارات الأوفلاين
           let isTeleporting = false;
           const checkInTime = new Date(ci.checkInAt);
           const prevResult = await calcDistanceFromPrevBranch(db, manager.id, ci.branchName, checkInTime);
@@ -581,7 +557,7 @@ export const visitRouter = router({
             latitudeIn: ci.latitude,
             longitudeIn: ci.longitude,
             accuracyIn: ci.accuracy,
-            checkInAt: new Date(ci.checkInAt),
+            checkInAt: checkInTime,
             status: "checked_in",
             isMocked: ciFinalMocked ? "yes" : "no",
             suspicionScore: ciFinalMocked ? 100 : 0,
@@ -591,13 +567,9 @@ export const visitRouter = router({
 
           // 🚨 لو الزيارة المتزامنة وهمية — ابعت إشعار للأدمن
           if (ciFinalMocked) {
-            const branchRes = await db.select({ name: branches.name })
-              .from(branches).where(eq(branches.id, ci.branchId)).limit(1);
-            const managerUserRes = await db.select({ name: users.name })
-              .from(users).where(eq(users.id, ctx.user!.id)).limit(1);
             notifyOwner({
               title: "🚨 زيارة وهمية مكتشفة (أوفلاين)",
-              content: `المدير: ${managerUserRes[0]?.name ?? "غير معروف"}\nالفرع: ${branchRes[0]?.name ?? ci.branchName}\nوقت الدخول: ${new Date(ci.checkInAt).toLocaleString("ar-EG")}\n${isTeleporting ? "تم اكتشاف انتقال غير منطقي (Teleportation)" : "تحديد موقع وهمي"}`,
+              content: `المدير: ${await getManagerName(db, ctx.user!.id)}\nالفرع: ${branch.name}\nوقت الدخول: ${checkInTime.toLocaleString("ar-EG")}\n${isTeleporting ? "تم اكتشاف انتقال غير منطقي (Teleportation)" : "تحديد موقع وهمي"}`,
             }).catch(() => {});
           }
 
@@ -618,76 +590,19 @@ export const visitRouter = router({
 
           if (!visitId) { failedLocalIds.push(co.localCheckInId); continue; }
 
-          const checkInTime  = new Date(co.checkInAt);
-          const checkOutTime = new Date(co.checkOutAt);
-          const durationMin  = (checkOutTime.getTime() - checkInTime.getTime()) / 60_000;
-
-          let distanceToPrevBranchKm: number | undefined;
-          let isTeleporting = false;
-
-          const visitRow = await db.select({ branchName: branches.name })
+          const visitRow = await db.select({
+            id: visits.id,
+            checkInAt: visits.checkInAt,
+            branchName: branches.name,
+          })
             .from(visits)
             .innerJoin(branches, eq(visits.branchId, branches.id))
-            .where(eq(visits.id, visitId))
+            .where(and(eq(visits.id, visitId), eq(visits.managerId, manager.id)))
             .limit(1);
 
-          if (visitRow[0]) {
-            const prevResult = await calcDistanceFromPrevBranch(
-              db, manager.id, visitRow[0].branchName, checkInTime
-            );
-            if (prevResult !== null) {
-              distanceToPrevBranchKm = prevResult.km;
-              if (isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
-                isTeleporting = true;
-              }
-            }
-          }
+          if (!visitRow[0]) continue;
 
-          // ── 🚨 كشف الزيارة القصيرة (offline) ──────────────────────────────
-          let syncShortScore = 0;
-          let syncShortReason: string | null = null;
-          if (durationMin < 3) {
-            syncShortScore = 80;
-            syncShortReason = `SHORT_VISIT:${Math.round(durationMin * 60)}sec`;
-          } else if (durationMin < 7) {
-            syncShortScore = 40;
-            syncShortReason = `SHORT_VISIT:${Math.round(durationMin)}min`;
-          }
-
-          const syncCurrentData = await db.select({
-            suspicionScore: visits.suspicionScore,
-            mockReasons: visits.mockReasons,
-          }).from(visits).where(eq(visits.id, visitId)).limit(1);
-
-          const syncExistingScore   = syncCurrentData[0]?.suspicionScore ?? 0;
-          const syncExistingReasons: string[] = (() => {
-            try { return JSON.parse(syncCurrentData[0]?.mockReasons ?? "[]"); } catch { return []; }
-          })();
-
-          const syncFinalScore   = syncExistingScore + syncShortScore;
-          const syncFinalReasons = syncShortReason ? [...syncExistingReasons, syncShortReason] : syncExistingReasons;
-          const syncIsShortMocked = syncShortScore >= 80;
-
-          // لا نكتب "no" — نحافظ على قرار check-in إذا لم يُكتشف teleporting أو زيارة قصيرة
-          const syncCheckOutMockedUpdate = (isTeleporting || syncIsShortMocked)
-            ? { isMocked: "yes" as const }
-            : {};
-
-          await db.update(visits)
-            .set({
-              checkOutAt: checkOutTime,
-              status: "checked_out",
-              ...syncCheckOutMockedUpdate,
-              ...(distanceToPrevBranchKm !== undefined ? { distanceToPrevBranchKm: distanceToPrevBranchKm.toString() } : {}),
-              ...(syncShortScore > 0 ? {
-                suspicionScore: syncFinalScore,
-                mockReasons: JSON.stringify(syncFinalReasons),
-              } : {}),
-            })
-            .where(and(
-              eq(visits.id, visitId),
-              eq(visits.managerId, manager.id),
-            ));
+          await finalizeCheckOut(db, manager.id, visitRow[0], new Date(co.checkOutAt));
           synced++;
         } catch (err) {
           console.error("[syncOfflineVisits] checkOut error:", err);
@@ -701,9 +616,11 @@ export const visitRouter = router({
   syncOfflineData: protectedProcedure
     .input(z.object({
       locations: z.array(z.object({
-        latitude: z.string(), longitude: z.string(),
-        accuracy: z.string().optional(), timestamp: z.string(),
-      })),
+        latitude: coordSchema,
+        longitude: coordSchema,
+        accuracy: z.string().max(32).optional(),
+        timestamp: z.string().datetime({ offset: true }),
+      })).max(2000),
     }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();

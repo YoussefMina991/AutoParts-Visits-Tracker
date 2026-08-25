@@ -113,6 +113,8 @@ export async function listUsers() {
       role: users.role,
       createdAt: users.createdAt,
       lastSignedIn: users.lastSignedIn,
+      boundDeviceId: users.boundDeviceId,
+      deviceBoundAt: users.deviceBoundAt,
     }).from(users).orderBy(users.name);
   });
 }

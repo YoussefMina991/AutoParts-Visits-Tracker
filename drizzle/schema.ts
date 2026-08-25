@@ -1,4 +1,4 @@
-import { decimal, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { decimal, int, index, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -7,6 +7,13 @@ export const users = mysqlTable("users", {
   name: text("name"),
   email: varchar("email", { length: 320 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+
+  // ── ربط الجهاز (Device Binding) ────────────────────────────────────────────
+  // بصمة الموبايل المسموح له فقط بالدخول — تُربط تلقائياً بأول تسجيل دخول
+  // من التطبيق، والأدمن يقدر يفكها من لوحة التحكم لو المستخدم غيّر جهازه
+  boundDeviceId: varchar("boundDeviceId", { length: 128 }),
+  deviceBoundAt: timestamp("deviceBoundAt"),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -53,7 +60,9 @@ export const managerBranches = mysqlTable("managerBranches", {
   managerId: int("managerId").notNull(),
   branchId: int("branchId").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_managerBranches_manager").on(table.managerId),
+]);
 
 export type ManagerBranch = typeof managerBranches.$inferSelect;
 
@@ -86,7 +95,12 @@ export const visits = mysqlTable("visits", {
   mockReasons: text("mockReasons"),
 
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  // فهرس التاريخ الرئيسي — كل استعلامات السجل والتقارير بتمشي عليه
+  index("idx_visits_manager_checkin").on(table.managerId, table.checkInAt),
+  // بحث الزيارة المفتوحة (checked_in) لكل مدير
+  index("idx_visits_manager_status").on(table.managerId, table.status),
+]);
 
 export type Visit = typeof visits.$inferSelect;
 export type InsertVisit = typeof visits.$inferInsert;
@@ -100,7 +114,10 @@ export const locationLogs = mysqlTable("locationLogs", {
   accuracy: text("accuracy"),
   timestamp: timestamp("timestamp").notNull(), // The actual time the location was recorded on device
   syncedAt: timestamp("syncedAt").defaultNow().notNull(), // When it was sent to server
-});
+}, (table) => [
+  // التتبع اللحظي + مسار اليوم كله بيقرأوا من الفهرس ده
+  index("idx_locationLogs_manager_timestamp").on(table.managerId, table.timestamp),
+]);
 
 export type LocationLog = typeof locationLogs.$inferSelect;
 export type InsertLocationLog = typeof locationLogs.$inferInsert;

@@ -42,9 +42,16 @@ public class NativeGeofenceEngine {
     private static final String STATE_PREFS    = "BranchTrackerNativeState";
     private static final String KEY_ACTIVE     = "active_branch_id";
     private static final String KEY_LAST_IN    = "last_checkin_time_";
+    private static final String KEY_OUTSIDE_N  = "outside_count_"; // عدّاد تأكيد الخروج
     private static final float  DEFAULT_RADIUS = 200.0f;
     private static final float  BUFFER         = 50.0f;
     private static final long   COOLDOWN_MS    = 3 * 60 * 1000L;
+
+    // ── إصلاحات الموثوقية ──────────────────────────────────────────────────
+    // تجاهل القراءات سيئة الدقة — كانت السبب في خروج وهمي والمدير ثابت مكانه
+    private static final float  MAX_ACCURACY_M      = 100.0f;
+    // نأكد من قراءتين متتاليتين خارج النطاق قبل تسجيل الخروج
+    private static final int    REQUIRED_OUTSIDE    = 2;
 
     // Notification
     private static final String CHANNEL_ID     = "visit_tracking_events";
@@ -81,6 +88,14 @@ public class NativeGeofenceEngine {
     // ══════════════════════════════════════════════════════════════════════════
     public static void processLocation(Context context, Location location) {
         if (location == null) return;
+
+        // ✅ فلتر الدقة: قراءة سيئة (>100m) ممكن تحسب المسافة غلط تماماً
+        // فتسجّل خروج وهمي أو دخول خاطئ — نتجاهلها نهائياً
+        if (!location.hasAccuracy() || location.getAccuracy() > MAX_ACCURACY_M) {
+            Log.d(TAG, "Skipping inaccurate fix: "
+                + (location.hasAccuracy() ? location.getAccuracy() + "m" : "unknown"));
+            return;
+        }
 
         SharedPreferences capPrefs   = context.getSharedPreferences(PREFS_NAME,   Context.MODE_PRIVATE);
         SharedPreferences statePrefs = context.getSharedPreferences(STATE_PREFS,  Context.MODE_PRIVATE);
@@ -229,7 +244,7 @@ public class NativeGeofenceEngine {
                 }
             }
 
-            // Auto check-out
+            // Auto check-out — ✅ بعد تأكيد قراءتين متتاليتين خارج النطاق
             if (currentActive != null) {
                 boolean shouldCheckOut = (activeBranchObj == null);
                 if (activeBranchObj != null) {
@@ -241,7 +256,16 @@ public class NativeGeofenceEngine {
                     Location.distanceBetween(lat, lng,
                         activeBranchObj.getDouble("latitude"),
                         activeBranchObj.getDouble("longitude"), dist);
-                    if (dist[0] > radius + BUFFER) shouldCheckOut = true;
+                    if (dist[0] > radius + BUFFER) {
+                        int outsideCount = statePrefs.getInt(KEY_OUTSIDE_N + currentActive, 0) + 1;
+                        statePrefs.edit().putInt(KEY_OUTSIDE_N + currentActive, outsideCount).apply();
+                        Log.d(TAG, "Outside reading " + outsideCount + "/" + REQUIRED_OUTSIDE
+                            + " for branch " + currentActive + " (" + Math.round(dist[0]) + "m)");
+                        shouldCheckOut = outsideCount >= REQUIRED_OUTSIDE;
+                    } else {
+                        // رجعنا جوه النطاق → صفّر العداد
+                        statePrefs.edit().remove(KEY_OUTSIDE_N + currentActive).apply();
+                    }
                 }
                 if (shouldCheckOut) {
                     String branchName = (activeBranchObj != null)
@@ -250,6 +274,7 @@ public class NativeGeofenceEngine {
                     boolean ok = sendCheckOut(apiUrl, currentActive);
                     if (ok) {
                         capPrefs.edit().remove(KEY_ACTIVE).apply();
+                        statePrefs.edit().remove(KEY_OUTSIDE_N + currentActive).apply();
                         showNotification(context, NOTIF_CHECKOUT,
                             "🔴 خروج تلقائي", "تم تسجيل خروجك من: " + branchName);
                         currentActive = null;
@@ -271,6 +296,7 @@ public class NativeGeofenceEngine {
                         capPrefs.edit().putString(KEY_ACTIVE, insideBranchId).apply();
                         statePrefs.edit()
                             .putLong(KEY_LAST_IN + insideBranchId, now)
+                            .remove(KEY_OUTSIDE_N + insideBranchId)
                             .apply();
                         String title = isMocked ? "⚠️ دخول مشبوه" : "✅ دخول تلقائي";
                         String text  = "تم تسجيل دخولك في: " + insideBranchName

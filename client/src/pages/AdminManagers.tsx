@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { compressImageFile } from "@/lib/imageCompression";
 import {
   Dialog,
   DialogContent,
@@ -277,20 +278,20 @@ export default function AdminManagers() {
     onError: (e) => toast.error(e.message),
   });
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("الصورة أكبر من 5 ميجا");
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error("الصورة أكبر من 15 ميجا");
       return;
     }
-    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const base64 = ev.target?.result as string;
-      setPhotoFile({ base64, ext, preview: base64 });
-    };
-    reader.readAsDataURL(file);
+    try {
+      // ✅ ضغط الصورة في المتصفح قبل الإرسال — بدل رفع ميجابيات خام
+      const { base64, extension } = await compressImageFile(file);
+      setPhotoFile({ base64, ext: extension, preview: base64 });
+    } catch (err: any) {
+      toast.error(`فشل معالجة الصورة: ${err.message || String(err)}`);
+    }
   };
 
   const handleCreateSave = () => {

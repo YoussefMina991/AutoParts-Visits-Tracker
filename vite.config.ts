@@ -103,6 +103,10 @@ export default defineConfig({
           "react-vendor": ["react", "react-dom"],
           "trpc-vendor": ["@trpc/client", "@trpc/react-query", "@tanstack/react-query"],
           "ui-vendor": ["lucide-react", "sonner", "wouter"],
+          // ✅ مكتبات ثقيلة بتتحمّل بس لما الصفحة المحتاجاها تفتح
+          "maps-vendor": ["leaflet", "react-leaflet"],
+          "charts-vendor": ["recharts"],
+          "excel-vendor": ["xlsx"],
         },
       },
     },

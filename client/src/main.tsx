@@ -16,7 +16,22 @@ const API_URL = Capacitor.isNativePlatform()
   : "/api/trpc";
 
 function Root() {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            // ✅ البيانات تعتبر fresh لمدة 30 ثانية — يمنع موجة إعادة
+            // الجلب عند كل تنقل بين الصفحات (كان بيرهق السيرفر والشبكة)
+            staleTime: 30_000,
+            retry: 1,
+          },
+          mutations: {
+            retry: 0,
+          },
+        },
+      })
+  );
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [

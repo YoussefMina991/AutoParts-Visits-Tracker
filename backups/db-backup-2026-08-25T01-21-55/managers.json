@@ -1,0 +1,32 @@
+[
+  {
+    "id": 26,
+    "userId": 29,
+    "employeeCode": null,
+    "phone": null,
+    "photoUrl": null,
+    "isActive": "yes",
+    "createdAt": "2026-08-22T07:05:53.000Z",
+    "updatedAt": "2026-08-22T07:05:53.000Z"
+  },
+  {
+    "id": 27,
+    "userId": 28,
+    "employeeCode": null,
+    "phone": null,
+    "photoUrl": null,
+    "isActive": "yes",
+    "createdAt": "2026-08-22T07:05:58.000Z",
+    "updatedAt": "2026-08-22T07:05:58.000Z"
+  },
+  {
+    "id": 28,
+    "userId": 30,
+    "employeeCode": null,
+    "phone": null,
+    "photoUrl": "/uploads/managers/manager_28_1787475422604.png",
+    "isActive": "yes",
+    "createdAt": "2026-08-23T05:56:55.000Z",
+    "updatedAt": "2026-08-23T05:57:02.000Z"
+  }
+]

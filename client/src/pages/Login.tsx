@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
 import { Capacitor } from "@capacitor/core";
+import { Device } from "@capacitor/device";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -22,6 +23,14 @@ export default function LoginPage() {
     if (!username.trim() || !password) return;
     setLoading(true);
     try {
+      // 🔒 بصمة الجهاز — بتتربط بالحساب أول تسجيل دخول وتمنع استخدام
+      // الحساب من أي موبايل تاني
+      let deviceId: string | undefined;
+      if (Capacitor.isNativePlatform()) {
+        const info = await Device.getId();
+        deviceId = info.identifier;
+      }
+
       const BASE_URL = import.meta.env.VITE_API_URL || "http://192.168.1.8:3000";
       const LOGIN_URL = Capacitor.isNativePlatform()
         ? `${BASE_URL}/api/auth/login`
@@ -30,10 +39,11 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ 
-          username: username.trim(), 
+        body: JSON.stringify({
+          username: username.trim(),
           password,
-          platform: Capacitor.isNativePlatform() ? "mobile" : "web" 
+          platform: Capacitor.isNativePlatform() ? "mobile" : "web",
+          ...(deviceId ? { deviceId } : {}),
         }),
       });
       const data = await res.json();

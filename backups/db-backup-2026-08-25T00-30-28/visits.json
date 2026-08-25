@@ -1,0 +1,38 @@
+[
+  {
+    "id": 83,
+    "managerId": 27,
+    "branchId": 8,
+    "checkInAt": "2026-08-24T09:10:59.000Z",
+    "checkOutAt": "2026-08-24T12:49:27.000Z",
+    "latitudeIn": "30.0805281",
+    "longitudeIn": "31.2206503",
+    "accuracyIn": null,
+    "photoUrl": null,
+    "notes": null,
+    "status": "checked_out",
+    "distanceToPrevBranchKm": null,
+    "createdAt": "2026-08-24T09:10:59.000Z",
+    "isMocked": "no",
+    "suspicionScore": 0,
+    "mockReasons": null
+  },
+  {
+    "id": 84,
+    "managerId": 27,
+    "branchId": 3,
+    "checkInAt": "2026-08-24T13:05:00.000Z",
+    "checkOutAt": "2026-08-24T13:08:59.000Z",
+    "latitudeIn": "30.0698467",
+    "longitudeIn": "31.1971283",
+    "accuracyIn": null,
+    "photoUrl": null,
+    "notes": null,
+    "status": "checked_out",
+    "distanceToPrevBranchKm": "6.00",
+    "createdAt": "2026-08-24T13:05:00.000Z",
+    "isMocked": "no",
+    "suspicionScore": 40,
+    "mockReasons": "[\"SHORT_VISIT:4min\"]"
+  }
+]

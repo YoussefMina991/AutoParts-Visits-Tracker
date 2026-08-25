@@ -6,6 +6,9 @@ import { useAuth } from "@/_core/hooks/useAuth";
 export default function VisitHistory() {
   const { user } = useAuth();
   const { data: visitsData, isLoading } = trpc.visit.myHistory.useQuery({ limit: 50, offset: 0 });
+  // صورة المدير بتتخزن في جدول managers مش users
+  const { data: managerProfile } = trpc.manager.getCurrentManager.useQuery();
+  const photoUrl = managerProfile?.photoUrl ?? null;
   const visits = (visitsData?.items ?? []) as any[];
 
   if (isLoading) {
@@ -226,11 +229,11 @@ export default function VisitHistory() {
         <div className="wallet-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
             <div className="card-brand" style={{ marginBottom: 0 }}>AP</div>
-            {user?.photoUrl ? (
-              <img 
-                src={user.photoUrl.startsWith('http') ? user.photoUrl : `${import.meta.env.VITE_API_URL || ''}${user.photoUrl}`} 
-                alt="Profile" 
-                style={{ width: '48px', height: '48px', borderRadius: '12px', border: '1px solid rgba(15,165,248,0.5)', objectFit: 'cover', background: 'rgba(15,165,248,0.1)' }} 
+            {photoUrl ? (
+              <img
+                src={photoUrl.startsWith('http') ? photoUrl : `${import.meta.env.VITE_API_URL || ''}${photoUrl}`}
+                alt="Profile"
+                style={{ width: '48px', height: '48px', borderRadius: '12px', border: '1px solid rgba(15,165,248,0.5)', objectFit: 'cover', background: 'rgba(15,165,248,0.1)' }}
               />
             ) : (
               <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(15,165,248,0.1)', border: '1px solid rgba(15,165,248,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0fa5f8', fontWeight: 'bold', fontSize: '20px' }}>

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eq, and, desc, gte, lt } from "drizzle-orm";
+import { eq, and, desc, gte, lt, inArray, or, sql } from "drizzle-orm";
 import { router, protectedProcedure, adminProcedure } from "./_core/trpc";
 import { getDb } from "./db";
 import { managers, managerBranches, branches, users, locationLogs, visits } from "../drizzle/schema";
@@ -194,6 +194,7 @@ export const managerRouter = router({
     }),
 
   // GET - admin live locations of all active managers
+  // ✅ محسّن: استعلامين ثابتين بدل استعلام لكل مدير (كان N+1)
   getLiveLocations: adminProcedure.query(async () => {
     const db = await getDb();
     if (!db) throw new Error("Database not available");
@@ -209,28 +210,44 @@ export const managerRouter = router({
       .innerJoin(users, eq(managers.userId, users.id))
       .where(eq(managers.isActive, "yes"));
 
-    const managerLocations = await Promise.all(
-      activeManagers.map(async (m) => {
-        const logs = await db
-          .select({
-            latitude: locationLogs.latitude,
-            longitude: locationLogs.longitude,
-            timestamp: locationLogs.timestamp,
-          })
-          .from(locationLogs)
-          .where(eq(locationLogs.managerId, m.id))
-          .orderBy(desc(locationLogs.timestamp))
-          .limit(1)
-          .execute();
-          
-        return {
-          ...m,
-          location: logs[0] ?? null,
-        };
-      })
-    );
+    if (activeManagers.length === 0) return [];
 
-    return managerLocations; // return ALL managers, location may be null if never tracked
+    const managerIds = activeManagers.map((m) => m.id);
+
+    // ① آخر timestamp لكل مدير
+    const latestPerManager = await db
+      .select({
+        managerId: locationLogs.managerId,
+        maxTimestamp: sql<string>`MAX(${locationLogs.timestamp})`,
+      })
+      .from(locationLogs)
+      .where(inArray(locationLogs.managerId, managerIds))
+      .groupBy(locationLogs.managerId);
+
+    if (latestPerManager.length === 0) {
+      return activeManagers.map((m) => ({ ...m, location: null }));
+    }
+
+    // ② جيب نقاط الـ GPS نفسها بشرط (managerId + timestamp) المطابقين
+    const pointConditions = latestPerManager.map((r) =>
+      and(eq(locationLogs.managerId, r.managerId), eq(locationLogs.timestamp, new Date(r.maxTimestamp)))
+    );
+    const points = await db
+      .select({
+        managerId: locationLogs.managerId,
+        latitude: locationLogs.latitude,
+        longitude: locationLogs.longitude,
+        timestamp: locationLogs.timestamp,
+      })
+      .from(locationLogs)
+      .where(pointConditions.length === 1 ? pointConditions[0] : or(...pointConditions));
+
+    const locationByManager = new Map(points.map((p) => [p.managerId, p]));
+
+    return activeManagers.map((m) => ({
+      ...m,
+      location: locationByManager.get(m.id) ?? null,
+    }));
   }),
 
   // GET - admin route history for a specific manager on a specific date

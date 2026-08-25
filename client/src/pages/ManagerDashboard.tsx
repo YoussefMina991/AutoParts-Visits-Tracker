@@ -1,8 +1,12 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Link } from "wouter";
+import { trpc } from "@/lib/trpc";
 
 export default function ManagerDashboard() {
   const { user } = useAuth();
+  // صورة المدير بتتخزن في جدول managers مش users
+  const { data: managerProfile } = trpc.manager.getCurrentManager.useQuery();
+  const photoUrl = managerProfile?.photoUrl ?? null;
 
   return (
     <>
@@ -217,11 +221,11 @@ export default function ManagerDashboard() {
 
         <header className="header-section fade-up" style={{ animationDelay: '0s', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {user?.photoUrl ? (
-              <img 
-                src={user.photoUrl.startsWith('http') ? user.photoUrl : `${import.meta.env.VITE_API_URL || ''}${user.photoUrl}`} 
-                alt="Profile" 
-                style={{ width: '56px', height: '56px', borderRadius: '50%', border: '2px solid rgba(15,165,248,0.5)', objectFit: 'cover' }} 
+            {photoUrl ? (
+              <img
+                src={photoUrl.startsWith('http') ? photoUrl : `${import.meta.env.VITE_API_URL || ''}${photoUrl}`}
+                alt="Profile"
+                style={{ width: '56px', height: '56px', borderRadius: '50%', border: '2px solid rgba(15,165,248,0.5)', objectFit: 'cover' }}
               />
             ) : (
               <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(15,165,248,0.1)', border: '2px solid rgba(15,165,248,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0fa5f8', fontSize: '24px', fontWeight: 'bold' }}>
