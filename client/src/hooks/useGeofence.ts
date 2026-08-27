@@ -372,6 +372,9 @@ export function useGeofence() {
 
   const recentPositionsRef = useRef<{ lat: number; lng: number }[]>([]);
 
+  // ── ✅ قفل محلي لمنع الإرسال المتزامن عند وصول إحداثيات سريعة متتالية ─────────
+  const isProcessingCheckInRef = useRef(false);
+
   // ── ✅ عدّاد القراءات الخارجية لكل فرع (لتأكيد الخروج بقراءتين) ─────────────
   const outsideCountRef = useRef<Map<number, number>>(new Map());
 
@@ -507,20 +510,24 @@ export function useGeofence() {
     }
 
     // ── 3. Auto check-in ───────────────────────────────────────────────────
-    for (const branch of currentBranches) {
-      if (!branch.latitude || !branch.longitude) continue;
-      const dist = getDistanceMeters(
-        currentLat, currentLng,
-        parseFloat(branch.latitude),
-        parseFloat(branch.longitude)
-      );
-      if (dist <= (branch.geofenceRadiusMeters || 200)) {
-        // ── Cooldown: تجنب تسجيل الدخول أكثر من مرة للفرع نفسه في 3 دقايق ──
-        // ✅ يُحفظ في Preferences → يبقى بعد إعادة فتح التطبيق
-        if (await isBranchInCooldown(branch.id)) {
-          break; // في cooldown — تجاهل هذه المحاولة
-        }
-        await setBranchCooldown(branch.id);
+    if (isProcessingCheckInRef.current) return;
+    isProcessingCheckInRef.current = true;
+    
+    try {
+      for (const branch of currentBranches) {
+        if (!branch.latitude || !branch.longitude) continue;
+        const dist = getDistanceMeters(
+          currentLat, currentLng,
+          parseFloat(branch.latitude),
+          parseFloat(branch.longitude)
+        );
+        if (dist <= (branch.geofenceRadiusMeters || 200)) {
+          // ── Cooldown: تجنب تسجيل الدخول أكثر من مرة للفرع نفسه في 3 دقايق ──
+          // ✅ يُحفظ في Preferences → يبقى بعد إعادة فتح التطبيق
+          if (await isBranchInCooldown(branch.id)) {
+            break; // في cooldown — تجاهل هذه المحاولة
+          }
+          await setBranchCooldown(branch.id);
 
         if (isOnline()) {
           try {
@@ -563,6 +570,9 @@ export function useGeofence() {
         }
         break; // check-in في فرع واحد بس
       }
+    }
+    } finally {
+      isProcessingCheckInRef.current = false;
     }
   }, []); // جميع المتغيرات تمر عبر refs — لا داعي لإعادة الإنشاء
 

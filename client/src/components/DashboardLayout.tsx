@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useState, useRef, useEffect } from "react";
 import { format } from "date-fns";
+import { AutoPartsLogo } from "./AutoPartsLogo";
 
 // ─── Design Tokens (single source of truth) ──────────────────────────────────
 // BG:        #F4F4F5  surface: #FFFFFF  border: #E4E4E7
@@ -397,20 +398,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       >
         {/* Brand */}
         <div className="flex items-center gap-2 px-2 mb-7">
-          <div
-            className="w-7 h-7 rounded-[10px] flex items-center justify-center"
-            style={{ background: "#18181B" }}
-          >
-            <span
-              className="material-symbols-outlined text-white"
-              style={{ fontSize: 15, fontVariationSettings: "'FILL' 1" }}
-            >
-              monitoring
-            </span>
+          <div style={{ height: "40px", width: "100%" }}>
+            <AutoPartsLogo />
           </div>
-          <span className="font-bold text-[14px] tracking-tight text-[#18181B]">
-            HEITKAMP
-          </span>
         </div>
 
         {/* Nav */}

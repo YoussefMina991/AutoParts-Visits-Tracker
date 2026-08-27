@@ -6,6 +6,7 @@ import { useLocation } from "wouter";
 import { Capacitor } from "@capacitor/core";
 import { Device } from "@capacitor/device";
 import { SERVER_BASE_URL } from "@/lib/config";
+import { AutoPartsLogo } from "@/components/AutoPartsLogo";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -262,7 +263,9 @@ export default function LoginPage() {
 
         <div className="content-container">
           <span className="welcome-text">مرحباً بك في</span>
-          <h1 className="brand-title">AutoParts</h1>
+          <div style={{ height: "60px", marginBottom: "40px", marginTop: "10px" }}>
+            <AutoPartsLogo />
+          </div>
 
           <div className="features-area">
             {!showForm ? (

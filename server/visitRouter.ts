@@ -8,6 +8,9 @@ import { getDistanceMeters } from "../shared/utils";
 import { getBranchDistance } from "../shared/gizaBranchDistances";
 import { notifyOwner } from "./_core/notification";
 
+// ── In-Memory Lock لمنع الدخول المتزامن (Race Condition) ─────────────────────
+const activeCheckInLocks = new Set<number>();
+
 // ── Schemas مشتركة ────────────────────────────────────────────────────────────
 const coordSchema = z.string().regex(/^-?\d{1,3}(\.\d+)?$/, "invalid coordinate");
 
@@ -209,9 +212,15 @@ export const visitRouter = router({
       if (!managerResult[0]) throw new Error("Manager profile not found");
       const manager = managerResult[0];
 
-      const existingVisits = await db.select({ id: visits.id }).from(visits)
-        .where(and(eq(visits.managerId, manager.id), eq(visits.status, "checked_in"))).limit(1);
-      if (existingVisits.length > 0) throw new Error("Already checked into a branch. Please check out first.");
+      if (activeCheckInLocks.has(manager.id)) {
+        throw new Error("Already processing a check-in request, please wait.");
+      }
+      activeCheckInLocks.add(manager.id);
+
+      try {
+        const existingVisits = await db.select({ id: visits.id }).from(visits)
+          .where(and(eq(visits.managerId, manager.id), eq(visits.status, "checked_in"))).limit(1);
+        if (existingVisits.length > 0) throw new Error("Already checked into a branch. Please check out first.");
 
       const branchResult = await db.select().from(branches).where(eq(branches.id, input.branchId)).limit(1);
       if (!branchResult[0]) throw new Error("Branch not found");
@@ -277,6 +286,9 @@ export const visitRouter = router({
       }
 
       return { success: true };
+      } finally {
+        activeCheckInLocks.delete(manager.id);
+      }
     }),
 
   // POST — Android native background service checkout (accepts branchId, looks up the active visitId itself)
