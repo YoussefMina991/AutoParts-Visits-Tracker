@@ -19,6 +19,7 @@ interface Visit {
   managerName: string;
   managerEmail: string | null;
   distanceToPrevBranchKm: number | null;
+  mockReasons: string | null;
 }
 
 interface DayGroup {
@@ -53,6 +54,29 @@ function fmtDate(dt: Date | string): string {
 }
 function fmtDateLabel(dateStr: string): string {
   return format(new Date(dateStr), "EEEE، d MMMM yyyy", { locale: ar });
+}
+
+function parseMockReasons(reasonsStr: string | null): string[] {
+  if (!reasonsStr) return [];
+  try {
+    return JSON.parse(reasonsStr);
+  } catch {
+    return [];
+  }
+}
+
+function translateReason(r: string): string {
+  if (r.startsWith("TELEPORTATION")) return "انتقال غير منطقي (مسافة/وقت مستحيل)";
+  if (r.startsWith("SHORT_VISIT")) return "زيارة قصيرة جداً (أقل من الحد الأدنى)";
+  if (r === "ANDROID_IS_MOCK_API") return "استخدام تطبيق Fake GPS (مكشوف)";
+  if (r === "DEVELOPER_OPTIONS_ENABLED") return "وضع المطور مفعل";
+  if (r === "MOCK_APP_INSTALLED") return "تطبيق تزييف موقع مثبت بالجهاز";
+  if (r === "ACCURACY_ZERO" || r.startsWith("ACCURACY_TINY_INTEGER")) return "دقة إحداثيات مشبوهة (GPS معدل)";
+  if (r.startsWith("SUSPICIOUS_PROVIDER")) return "مزود موقع مشبوه";
+  if (r === "DIST_HAVERSINE_ESTIMATE") return "حساب مسافة تقديري (خط مستقيم)";
+  if (r === "SENSOR_STATIONARY_WHILE_GPS_MOVING") return "حساس الحركة ساكن بينما يتغير الموقع";
+  if (r === "SUSPICIOUS_LOCATION_EXTRAS") return "بيانات موقع مشبوهة (Extras)";
+  return r; // Fallback
 }
 
 function groupVisits(visits: Visit[]): DayGroup[] {
@@ -267,7 +291,7 @@ function DayCard({ group }: { group: DayGroup }) {
                             {v.isMocked === "yes" && (
                               <span className="flex items-center gap-1 bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-red-200">
                                 <span className="material-symbols-outlined text-[12px]">warning</span>
-                                موقع وهمي
+                                زيارة وهمية / مشبوهة
                               </span>
                             )}
                           </div>
@@ -296,6 +320,18 @@ function DayCard({ group }: { group: DayGroup }) {
                               </span>
                             )}
                           </div>
+
+                          {v.isMocked === "yes" && v.mockReasons && (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {parseMockReasons(v.mockReasons).map((r, i) => (
+                                <span key={i} className="text-[10px] font-semibold text-red-700 bg-red-50/80 px-2 py-0.5 rounded border border-red-100 flex items-center gap-1">
+                                  <span className="w-1 h-1 rounded-full bg-red-500"></span>
+                                  {translateReason(r)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
                           {v.notes && <p className="mt-1 text-xs text-[#6B7280] italic">"{v.notes}"</p>}
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">

@@ -115,6 +115,10 @@ const REQUIRED_OUTSIDE_READINGS = 2;
 // ── ✅ مزامنة نقاط التتبع كل دقيقة (كانت 5 دقايق → التتبع اللحظي كان بطيء) ──
 const LOCATION_SYNC_INTERVAL_MS = 60 * 1000;
 
+// ── ✅ Dwell Time & Speed Check ──────────────────────────────────────────────
+const DWELL_TIME_MS = 2 * 60 * 1000; // دقيقتين
+const MAX_CHECKIN_SPEED_M_S = 4.16; // 15 كم/ساعة
+
 async function getCooldownKey(branchId: number): Promise<string> {
   return `checkin_cooldown_${branchId}`;
 }
@@ -378,6 +382,9 @@ export function useGeofence() {
   // ── ✅ عدّاد القراءات الخارجية لكل فرع (لتأكيد الخروج بقراءتين) ─────────────
   const outsideCountRef = useRef<Map<number, number>>(new Map());
 
+  // ── ✅ وقت أول مشاهدة داخل النطاق لكل فرع (لتطبيق Dwell Time) ──────────────
+  const firstSeenAtRef = useRef<Map<number, number>>(new Map());
+
   // ── ✅ آخر وقت اتعملت فيه مزامنة لنقاط التتبع (كل دقيقة بدل 5) ─────────────
   const lastLocationSyncAtRef = useRef(0);
 
@@ -387,6 +394,7 @@ export function useGeofence() {
     currentLng: number,
     accuracy?: number,
     isMocked?: boolean,
+    speed?: number,
   ) => {
     // ✅ إصلاح حرج: تجاهل القراءات سيئة الدقة تماماً
     // (GPS ضعيف لحظياً كان بيخلي النظام يفتكر المدير خرج من الفرع وهو واقف مكانه)
@@ -527,6 +535,26 @@ export function useGeofence() {
           if (await isBranchInCooldown(branch.id)) {
             break; // في cooldown — تجاهل هذه المحاولة
           }
+
+          // ── Dwell Time & Speed Check ───────────────────────────────────────
+          if (speed !== undefined && speed > MAX_CHECKIN_SPEED_M_S) {
+            console.debug(`[Geofence] Moving too fast (${speed}m/s), skipping check-in`);
+            firstSeenAtRef.current.delete(branch.id);
+            break;
+          }
+
+          const nowTime = Date.now();
+          const firstSeen = firstSeenAtRef.current.get(branch.id);
+          if (!firstSeen) {
+            console.debug(`[Geofence] First seen at ${branch.name}, starting dwell timer`);
+            firstSeenAtRef.current.set(branch.id, nowTime);
+            break; // Wait for dwell time
+          }
+          if (nowTime - firstSeen < DWELL_TIME_MS) {
+            console.debug(`[Geofence] Waiting for dwell time at ${branch.name} (${Math.round((nowTime - firstSeen) / 1000)}s)`);
+            break; // Wait
+          }
+
           await setBranchCooldown(branch.id);
 
         if (isOnline()) {
@@ -568,7 +596,11 @@ export function useGeofence() {
           await setPendingVisits(pending);
           toast.success(`✅ دخول مؤقت في ${branch.name} — سيُرسل لما النت يرجع`);
         }
+        firstSeenAtRef.current.delete(branch.id); // Reset dwell timer after successful trigger
         break; // check-in في فرع واحد بس
+      } else {
+        // Outside the branch, reset its dwell timer
+        firstSeenAtRef.current.delete(branch.id);
       }
     }
     } finally {
@@ -624,7 +656,7 @@ export function useGeofence() {
                 return;
               }
               if (location) {
-                await handlePositionUpdate(location.latitude, location.longitude, location.accuracy, !!location.simulated);
+                await handlePositionUpdate(location.latitude, location.longitude, location.accuracy, !!location.simulated, location.speed);
               }
             }
           );
@@ -668,7 +700,13 @@ export function useGeofence() {
               // ✅ accuracy===1 كانت بتعلّم مواقع حقيقية إنها وهمية على الويب
               //   المتصفحات بتبلغ دقة عالية جداً أحياناً — نعتمد على 0 بس
               const isSuspicious = pos.coords.accuracy === 0;
-              handlePositionUpdate(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, isSuspicious);
+              handlePositionUpdate(
+                pos.coords.latitude, 
+                pos.coords.longitude, 
+                pos.coords.accuracy, 
+                isSuspicious, 
+                pos.coords.speed !== null ? pos.coords.speed : undefined
+              );
             }
           }
         );

@@ -59,6 +59,8 @@ export const managerBranches = mysqlTable("managerBranches", {
   id: int("id").autoincrement().primaryKey(),
   managerId: int("managerId").notNull(),
   branchId: int("branchId").notNull(),
+  // ⭐ الفرع الأساسي: "yes" = فرع مسؤولية مباشرة، "no" = فرع مسموح به فقط
+  isPrimary: mysqlEnum("isPrimary", ["yes", "no"]).default("no").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("idx_managerBranches_manager").on(table.managerId),
@@ -70,7 +72,12 @@ export type ManagerBranch = typeof managerBranches.$inferSelect;
 export const visits = mysqlTable("visits", {
   id: int("id").autoincrement().primaryKey(),
   managerId: int("managerId").notNull(),
-  branchId: int("branchId").notNull(),
+  // branchId قابل للـ null عشان المأموريات الخارجية (زيارات العملاء خارج الفروع)
+  branchId: int("branchId"),
+  // نوع الزيارة: branch = زيارة فرع عادية، external_mission = مأمورية خارجية
+  visitType: mysqlEnum("visitType", ["branch", "external_mission"]).default("branch").notNull(),
+  // noteType: short_visit = سبب الزيارة القصيرة، non_primary = سبب زيارة فرع غير أساسي
+  noteType: mysqlEnum("noteType", ["general", "short_visit", "non_primary", "external_mission"]).default("general").notNull(),
   checkInAt: timestamp("checkInAt").defaultNow().notNull(),
   checkOutAt: timestamp("checkOutAt"),
   latitudeIn: text("latitudeIn").notNull(),

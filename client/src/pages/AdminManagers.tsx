@@ -232,6 +232,8 @@ function AssignBranchesDialog({
 export default function AdminManagers() {
   const [createOpen, setCreateOpen] = useState(false);
   const [assignManager, setAssignManager] = useState<any>(null);
+  const [editPhotoManager, setEditPhotoManager] = useState<any>(null);
+  const [updatePhotoFile, setUpdatePhotoFile] = useState<{ base64: string; ext: ImageExtension; preview: string } | null>(null);
   const [form, setForm] = useState({ userId: "", employeeCode: "", phone: "" });
   const [photoFile, setPhotoFile] = useState<{ base64: string; ext: ImageExtension; preview: string } | null>(null);
 
@@ -520,6 +522,18 @@ export default function AdminManagers() {
                   {/* Right: actions */}
                   <div className="flex items-center gap-1.5 self-end md:self-auto">
                     <button
+                      onClick={() => setEditPhotoManager(m)}
+                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[#F4F4F5] cursor-pointer"
+                      title="تحديث الصورة"
+                    >
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ fontSize: 15, color: "#18181B" }}
+                      >
+                        add_a_photo
+                      </span>
+                    </button>
+                    <button
                       onClick={() => setAssignManager(m)}
                       className="h-8 px-3 flex items-center gap-1.5 rounded-xl text-[12px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
                       style={{ color: "#71717A", border: "1px solid #E4E4E7" }}
@@ -803,6 +817,166 @@ export default function AdminManagers() {
             onClose={() => setAssignManager(null)}
           />
         )}
+      </Dialog>
+
+      {/* ── Update Photo Dialog ────────────────────────────────────────────────────── */}
+      <Dialog
+        open={!!editPhotoManager}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditPhotoManager(null);
+            setUpdatePhotoFile(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
+          style={{ background: "#fff", border: "1px solid #E4E4E7" }}
+        >
+          <DialogHeader
+            className="px-6 py-4"
+            style={{ borderBottom: "1px solid #F4F4F5" }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: "#18181B" }}
+              >
+                <span
+                  className="material-symbols-outlined text-white"
+                  style={{ fontSize: 16, fontVariationSettings: "'FILL' 1" }}
+                >
+                  photo_camera
+                </span>
+              </div>
+              <div>
+                <DialogTitle
+                  className="text-[15px] font-bold leading-none"
+                  style={{ color: "#18181B" }}
+                >
+                  تحديث صورة المدير
+                </DialogTitle>
+                <p className="text-[12px] mt-0.5" style={{ color: "#71717A" }}>
+                  {editPhotoManager?.userName ?? ""}
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="px-6 py-5">
+            <label
+              className="flex items-center gap-3 cursor-pointer"
+              style={{
+                background: "#F4F4F5",
+                border: "1px dashed #D4D4D8",
+                borderRadius: 12,
+                padding: "10px 14px",
+                transition: "border-color .15s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#18181B")}
+              onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#D4D4D8")}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 15 * 1024 * 1024) {
+                    toast.error("الصورة أكبر من 15 ميجا");
+                    return;
+                  }
+                  try {
+                    const { base64, extension } = await compressImageFile(file);
+                    setUpdatePhotoFile({ base64, ext: extension, preview: base64 });
+                  } catch (err: any) {
+                    toast.error(`فشل معالجة الصورة: ${err.message || String(err)}`);
+                  }
+                }}
+              />
+              {updatePhotoFile ? (
+                <>
+                  <img
+                    src={updatePhotoFile.preview}
+                    alt="preview"
+                    style={{ width: 44, height: 44, borderRadius: 22, objectFit: "cover", flexShrink: 0, border: "2px solid #E4E4E7" }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] font-bold" style={{ color: "#18181B" }}>تم اختيار الصورة ✓</p>
+                    <p className="text-[11px]" style={{ color: "#A1A1AA" }}>اضغط لتغييرها</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {editPhotoManager?.photoUrl ? (
+                    <img
+                      src={editPhotoManager.photoUrl}
+                      alt="current"
+                      style={{ width: 44, height: 44, borderRadius: 22, objectFit: "cover", flexShrink: 0, border: "2px solid #E4E4E7" }}
+                    />
+                  ) : (
+                    <div
+                      style={{ width: 44, height: 44, borderRadius: 22, background: "#E4E4E7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: 20, color: "#A1A1AA", fontVariationSettings: "'FILL' 1" }}>
+                        add_a_photo
+                      </span>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-[12px] font-semibold" style={{ color: "#71717A" }}>
+                      {editPhotoManager?.photoUrl ? "تغيير الصورة الحالية" : "اضغط لرفع صورة"}
+                    </p>
+                    <p className="text-[11px]" style={{ color: "#A1A1AA" }}>JPG أو PNG — حد أقصى 5 ميجا</p>
+                  </div>
+                </>
+              )}
+            </label>
+          </div>
+
+          <DialogFooter
+            className="px-6 py-4 flex items-center justify-end gap-2"
+            style={{ borderTop: "1px solid #F4F4F5" }}
+          >
+            <button
+              onClick={() => {
+                setEditPhotoManager(null);
+                setUpdatePhotoFile(null);
+              }}
+              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
+              style={{ color: "#71717A" }}
+            >
+              إلغاء
+            </button>
+            <button
+              onClick={async () => {
+                if (!updatePhotoFile || !editPhotoManager) return;
+                try {
+                  await uploadPhotoMutation.mutateAsync({
+                    managerId: editPhotoManager.id,
+                    base64: updatePhotoFile.base64,
+                    extension: updatePhotoFile.ext,
+                  });
+                  toast.success("تم تحديث صورة المدير بنجاح");
+                  refetch();
+                  setEditPhotoManager(null);
+                  setUpdatePhotoFile(null);
+                } catch (e: any) {
+                  // error is handled by mutation onError
+                }
+              }}
+              disabled={uploadPhotoMutation.isPending || !updatePhotoFile}
+              className="h-9 px-5 rounded-xl text-[13px] font-bold text-white flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
+              style={{ background: "#18181B" }}
+            >
+              {uploadPhotoMutation.isPending && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              )}
+              حفظ الصورة
+            </button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </div>
   );

@@ -46,6 +46,11 @@ public class NativeGeofenceEngine {
     private static final float  DEFAULT_RADIUS = 200.0f;
     private static final float  BUFFER         = 50.0f;
     private static final long   COOLDOWN_MS    = 3 * 60 * 1000L;
+    
+    // ── Dwell Time & Speed Check ───────────────────────────────────────────────
+    private static final long   DWELL_TIME_MS  = 2 * 60 * 1000L; // 2 دقائق
+    private static final float  MAX_CHECKIN_SPEED_M_S = 4.16f; // 15 كم/ساعة
+    private static final String KEY_FIRST_SEEN = "first_seen_";
 
     // ── إصلاحات الموثوقية ──────────────────────────────────────────────────
     // تجاهل القراءات سيئة الدقة — كانت السبب في خروج وهمي والمدير ثابت مكانه
@@ -221,6 +226,7 @@ public class NativeGeofenceEngine {
             String  insideBranchId   = null;
             String  insideBranchName = null;
             JSONObject activeBranchObj = null;
+            SharedPreferences.Editor stateEditor = statePrefs.edit();
 
             for (int i = 0; i < branches.length(); i++) {
                 JSONObject b = branches.getJSONObject(i);
@@ -241,8 +247,12 @@ public class NativeGeofenceEngine {
                     isInsideAny      = true;
                     insideBranchId   = bId;
                     insideBranchName = b.getString("name");
+                } else {
+                    // إذا كان خارج الفرع، قم بتصفير عداد Dwell Time
+                    stateEditor.remove(KEY_FIRST_SEEN + bId);
                 }
             }
+            stateEditor.apply();
 
             // Auto check-out — ✅ بعد تأكيد قراءتين متتاليتين خارج النطاق
             if (currentActive != null) {
@@ -288,20 +298,35 @@ public class NativeGeofenceEngine {
                 long now      = System.currentTimeMillis();
                 long lastTime = statePrefs.getLong(KEY_LAST_IN + insideBranchId, 0);
                 if (now - lastTime >= COOLDOWN_MS) {
-                    Log.i(TAG, "Entering " + insideBranchName
-                        + " score=" + suspicionScore + " mocked=" + isMocked);
-                    boolean ok = sendCheckIn(apiUrl, insideBranchId, lat, lng,
-                        isMocked, suspicionScore, mockReasons);
-                    if (ok) {
-                        capPrefs.edit().putString(KEY_ACTIVE, insideBranchId).apply();
-                        statePrefs.edit()
-                            .putLong(KEY_LAST_IN + insideBranchId, now)
-                            .remove(KEY_OUTSIDE_N + insideBranchId)
-                            .apply();
-                        String title = isMocked ? "⚠️ دخول مشبوه" : "✅ دخول تلقائي";
-                        String text  = "تم تسجيل دخولك في: " + insideBranchName
-                            + (isMocked ? " (نقاط: " + suspicionScore + ")" : "");
-                        showNotification(context, NOTIF_CHECKIN, title, text);
+                    float speed = location.getSpeed();
+                    if (speed > MAX_CHECKIN_SPEED_M_S) {
+                        Log.d(TAG, "Manager moving too fast (" + speed + "m/s), skipping check-in for " + insideBranchName);
+                        statePrefs.edit().remove(KEY_FIRST_SEEN + insideBranchId).apply();
+                    } else {
+                        long firstSeen = statePrefs.getLong(KEY_FIRST_SEEN + insideBranchId, 0);
+                        if (firstSeen == 0) {
+                            Log.d(TAG, "First seen at " + insideBranchName + ", starting dwell timer.");
+                            statePrefs.edit().putLong(KEY_FIRST_SEEN + insideBranchId, now).apply();
+                        } else if (now - firstSeen >= DWELL_TIME_MS) {
+                            Log.i(TAG, "Entering " + insideBranchName
+                                + " score=" + suspicionScore + " mocked=" + isMocked);
+                            boolean ok = sendCheckIn(apiUrl, insideBranchId, lat, lng,
+                                isMocked, suspicionScore, mockReasons);
+                            if (ok) {
+                                capPrefs.edit().putString(KEY_ACTIVE, insideBranchId).apply();
+                                statePrefs.edit()
+                                    .putLong(KEY_LAST_IN + insideBranchId, now)
+                                    .remove(KEY_OUTSIDE_N + insideBranchId)
+                                    .remove(KEY_FIRST_SEEN + insideBranchId)
+                                    .apply();
+                                String title = isMocked ? "⚠️ دخول مشبوه" : "✅ دخول تلقائي";
+                                String text  = "تم تسجيل دخولك في: " + insideBranchName
+                                    + (isMocked ? " (نقاط: " + suspicionScore + ")" : "");
+                                showNotification(context, NOTIF_CHECKIN, title, text);
+                            }
+                        } else {
+                            Log.d(TAG, "Waiting for dwell time at " + insideBranchName + " (" + (now - firstSeen)/1000 + "s)");
+                        }
                     }
                 } else {
                     Log.d(TAG, "Cooldown active for " + insideBranchName);

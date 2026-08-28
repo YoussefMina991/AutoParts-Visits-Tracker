@@ -62,6 +62,7 @@ export const managerRouter = router({
         latitude: branches.latitude,
         longitude: branches.longitude,
         geofenceRadiusMeters: branches.geofenceRadiusMeters,
+        isPrimary: managerBranches.isPrimary,
       })
       .from(managerBranches)
       .innerJoin(branches, eq(managerBranches.branchId, branches.id))
@@ -130,11 +131,10 @@ export const managerRouter = router({
       const db = await getDb();
       if (!db) throw new Error("Database not available");
       const result = await db
-        .select({ id: branches.id })
+        .select({ branchId: managerBranches.branchId, isPrimary: managerBranches.isPrimary })
         .from(managerBranches)
-        .innerJoin(branches, eq(managerBranches.branchId, branches.id))
         .where(eq(managerBranches.managerId, input.managerId));
-      return result.map(r => r.id);
+      return result; // [{ branchId, isPrimary }]
     }),
 
   // POST — admin assigns branches to a manager
@@ -142,7 +142,10 @@ export const managerRouter = router({
     .input(
       z.object({
         managerId: z.number(),
-        branchIds: z.array(z.number()),
+        branches: z.array(z.object({
+          branchId: z.number(),
+          isPrimary: z.enum(["yes", "no"]).default("no"),
+        })),
       })
     )
     .mutation(async ({ input }) => {
@@ -154,11 +157,12 @@ export const managerRouter = router({
         .delete(managerBranches)
         .where(eq(managerBranches.managerId, input.managerId));
 
-      if (input.branchIds.length > 0) {
+      if (input.branches.length > 0) {
         await db.insert(managerBranches).values(
-          input.branchIds.map((branchId) => ({
+          input.branches.map(({ branchId, isPrimary }) => ({
             managerId: input.managerId,
             branchId,
+            isPrimary,
           }))
         );
       }
