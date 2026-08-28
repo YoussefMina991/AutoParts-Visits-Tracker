@@ -130,9 +130,11 @@ export const managerRouter = router({
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
+      // ✅ innerJoin مع branches عشان ميرجعش فروع اتمسحت ولا غير موجودة
       const result = await db
         .select({ branchId: managerBranches.branchId, isPrimary: managerBranches.isPrimary })
         .from(managerBranches)
+        .innerJoin(branches, eq(managerBranches.branchId, branches.id))
         .where(eq(managerBranches.managerId, input.managerId));
       return result; // [{ branchId, isPrimary }]
     }),
@@ -151,6 +153,20 @@ export const managerRouter = router({
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
+
+      // ✅ تحقق إن كل branchId موجود فعلاً في جدول branches قبل الإدخال
+      if (input.branches.length > 0) {
+        const branchIds = input.branches.map((b) => b.branchId);
+        const validBranches = await db
+          .select({ id: branches.id })
+          .from(branches)
+          .where(inArray(branches.id, branchIds));
+        const validIdSet = new Set(validBranches.map((b) => b.id));
+        const invalidIds = branchIds.filter((id) => !validIdSet.has(id));
+        if (invalidIds.length > 0) {
+          throw new Error(`الفروع التالية غير موجودة أو تم حذفها: ${invalidIds.join(", ")}`);
+        }
+      }
 
       // Remove old assignments and add new ones
       await db

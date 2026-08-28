@@ -138,6 +138,12 @@ export default function BranchCheckIn() {
         toast.success(`✅ تم بدء مأمورية خارجية بنجاح`);
         refetchVisits();
       } else if (type === "check_out_short") {
+        // ✅ null guard: لو إحنا بينما المودال مفتوحة وبيتم refetch وتغيرت حالة الزيارة
+        if (!activeVisit) {
+          toast.error("انتهت الجلسة من تلقاء نفسها");
+          setNotesModalState({ ...notesModalState, isOpen: false });
+          return;
+        }
         await checkOutMutation.mutateAsync({ 
           visitId: activeVisit.id,
           notes: visitNotes.trim(),
@@ -516,7 +522,11 @@ export default function BranchCheckIn() {
           <div className="check-in-card">
             <div className="card-header">
               <div className="branch-info">
-                <h2>{activeVisit?.branchName || closestBranch?.name || "مفيش فروع قريبة"}</h2>
+                <h2>
+                  {activeVisit
+                    ? (activeVisit.branchName || "مأمورية خارجية")
+                    : (closestBranch?.name || "مفيش فروع قريبة")}
+                </h2>
                 <p>
                   {gpsLocation
                     ? activeVisit

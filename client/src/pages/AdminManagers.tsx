@@ -25,11 +25,13 @@ function AssignBranchesDialog({
   onClose: () => void;
 }) {
   const { data: branchesList = [] } = trpc.branch.list.useQuery();
-  const { data: currentIds = [], isLoading } =
+  const { data: rawCurrentBranches = [], isLoading } =
     trpc.manager.getManagerBranches.useQuery(
       { managerId: manager.id },
       { enabled: !!manager }
     );
+  // getManagerBranches يرجع [{ branchId, isPrimary }] — استخرج الـ IDs بس
+  const currentIds = (rawCurrentBranches as any[]).map((b) => b.branchId as number);
   const [selectedIds, setSelectedIds] = useState<number[] | null>(null);
   const effectiveIds = selectedIds ?? currentIds;
 

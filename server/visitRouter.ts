@@ -21,7 +21,8 @@ type BranchRow = typeof branches.$inferSelect;
 interface VisitForCheckout {
   id: number;
   checkInAt: Date;
-  branchName: string;
+  notes?: string | null;
+  branchName: string | null; // جاي إنه null للمأموريات الخارجية (leftJoin)
   branchLatitude?: string | null;
   branchLongitude?: string | null;
 }
@@ -112,20 +113,23 @@ async function finalizeCheckOut(
   let isTeleporting = false;
   let distanceEstimated = false;
 
-  const prevResult = await calcDistanceFromPrevBranch(
-    db,
-    managerId,
-    visit.branchName,
-    visit.branchLatitude ? parseFloat(visit.branchLatitude) : undefined,
-    visit.branchLongitude ? parseFloat(visit.branchLongitude) : undefined,
-    visit.checkInAt
-  );
-  if (prevResult !== null) {
-    distanceKm = prevResult.km;
-    distanceEstimated = prevResult.estimated;
-    // إعادة فحص Teleportation كـ double-check (الأساسي بيحصل وقت checkIn)
-    if (isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
-      isTeleporting = true;
+  // ✅ لا نحسب مسافة للمأموريات الخارجية (branchName = null يعني مفيش فرع)
+  if (visit.branchName) {
+    const prevResult = await calcDistanceFromPrevBranch(
+      db,
+      managerId,
+      visit.branchName,
+      visit.branchLatitude ? parseFloat(visit.branchLatitude) : undefined,
+      visit.branchLongitude ? parseFloat(visit.branchLongitude) : undefined,
+      visit.checkInAt
+    );
+    if (prevResult !== null) {
+      distanceKm = prevResult.km;
+      distanceEstimated = prevResult.estimated;
+      // إعادة فحص Teleportation كـ double-check (الأساسي بيحصل وقت checkIn)
+      if (isTeleportation(prevResult.km, prevResult.timeDiffMin)) {
+        isTeleporting = true;
+      }
     }
   }
 
@@ -230,13 +234,14 @@ export const visitRouter = router({
         if (!input.branchId) throw new Error("Branch ID is required for a branch visit.");
         const branchResult = await db.select().from(branches).where(eq(branches.id, input.branchId)).limit(1);
         if (!branchResult[0]) throw new Error("Branch not found");
-        branch = branchResult[0];
+        const currentBranch = branchResult[0];
+        branch = currentBranch;
 
         const dist = getDistanceMeters(
           parseFloat(input.latitude), parseFloat(input.longitude),
-          parseFloat(branch.latitude), parseFloat(branch.longitude)
+          parseFloat(currentBranch.latitude), parseFloat(currentBranch.longitude)
         );
-        if (dist > (branch.geofenceRadiusMeters || 200) + 50) throw new Error("You are too far from the branch to check in.");
+        if (dist > (currentBranch.geofenceRadiusMeters || 200) + 50) throw new Error("You are too far from the branch to check in.");
       }
 
       let photoUrl: string | undefined;
