@@ -211,7 +211,7 @@ function AssignBranchesDialog({
           onClick={() =>
             assignMutation.mutate({
               managerId: manager.id,
-              branchIds: selected,
+              branches: selected.map(id => ({ branchId: id, isPrimary: "no" })),
             })
           }
           disabled={assignMutation.isPending || isLoading}

@@ -6,12 +6,21 @@ import { useGeofenceContext } from "@/App";
 import { Link } from "wouter";
 import { Loader2 } from "lucide-react";
 import { MapView, MapMarker, GeofenceCircle, type MapCenter } from "@/components/Map";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function BranchCheckIn() {
   const [view, setView] = useState<"list" | "map">("map");
   const [fly, setFly] = useState<MapCenter | null>(null);
   const [confirmingCheckout, setConfirmingCheckout] = useState(false);
   const didAutoFlyRef = useRef(false);
+
+  const [notesModalState, setNotesModalState] = useState<{
+    isOpen: boolean;
+    type: "check_in_branch" | "check_in_external" | "check_out_short";
+    branchId?: number;
+  }>({ isOpen: false, type: "check_in_branch" });
+  const [visitNotes, setVisitNotes] = useState("");
 
   const { latestLocation } = useGeofenceContext();
   const gpsLocation = latestLocation ? { lat: latestLocation.lat, lon: latestLocation.lon } : null;
@@ -48,28 +57,39 @@ export default function BranchCheckIn() {
   );
   const closestBranch = sortedBranches[0];
 
-  const handleManualCheckIn = async (branchId: number) => {
+  const openCheckInModal = (branchId: number) => {
     if (!gpsLocation) return toast.error("لسه بنحدد موقعك — استنى ثواني");
     if (globalMockedStatus) {
-      toast.error("🚨 الموقع وهمي! اقفل أي برنامج Fake GPS وحاول تاني");
-      return;
+      return toast.error("🚨 الموقع وهمي! اقفل أي برنامج Fake GPS وحاول تاني");
     }
-    const branchName = sortedBranches.find((b) => b.id === branchId)?.name ?? "";
-    try {
-      await checkInMutation.mutateAsync({
-        branchId,
-        latitude: gpsLocation.lat.toString(),
-        longitude: gpsLocation.lon.toString(),
-        isMocked: globalMockedStatus,
-      });
-      toast.success(`✅ تم تسجيل دخولك في ${branchName}`);
-      refetchVisits();
-    } catch (err: any) {
-      toast.error(`❌ فشل تسجيل الدخول: ${err.message || String(err)}`);
+    setNotesModalState({ isOpen: true, type: "check_in_branch", branchId });
+    setVisitNotes("");
+  };
+
+  const openExternalMissionModal = () => {
+    if (!gpsLocation) return toast.error("لسه بنحدد موقعك — استنى ثواني");
+    if (globalMockedStatus) {
+      return toast.error("🚨 الموقع وهمي! اقفل أي برنامج Fake GPS وحاول تاني");
+    }
+    setNotesModalState({ isOpen: true, type: "check_in_external" });
+    setVisitNotes("");
+  };
+
+  const handleManualCheckOutClick = () => {
+    if (!activeVisit) return;
+    const durationMin = (new Date().getTime() - new Date(activeVisit.checkInAt).getTime()) / 60000;
+    
+    // إذا كانت الزيارة أقل من 20 دقيقة (وتشمل 7 لـ 20 دقيقة كما طلب المستخدم)
+    if (durationMin < 20) {
+      setNotesModalState({ isOpen: true, type: "check_out_short" });
+      setVisitNotes("");
+      setConfirmingCheckout(false);
+    } else {
+      setConfirmingCheckout(true);
     }
   };
 
-  const handleManualCheckOut = async () => {
+  const handleManualCheckOutConfirm = async () => {
     if (!activeVisit) return;
     try {
       await checkOutMutation.mutateAsync({ visitId: activeVisit.id });
@@ -79,6 +99,56 @@ export default function BranchCheckIn() {
       toast.error(`❌ فشل تسجيل الخروج: ${err.message || String(err)}`);
     } finally {
       setConfirmingCheckout(false);
+    }
+  };
+
+  const submitModal = async () => {
+    const { type, branchId } = notesModalState;
+    if (type === "check_in_external" && !visitNotes.trim()) {
+      return toast.error("برجاء إدخال تفاصيل المأمورية الخارجية");
+    }
+    if (type === "check_out_short" && !visitNotes.trim()) {
+      return toast.error("برجاء إدخال سبب قصر مدة الزيارة");
+    }
+
+    try {
+      if (type === "check_in_branch") {
+        if (!branchId) return;
+        const branchName = sortedBranches.find((b) => b.id === branchId)?.name ?? "";
+        await checkInMutation.mutateAsync({
+          branchId,
+          latitude: gpsLocation!.lat.toString(),
+          longitude: gpsLocation!.lon.toString(),
+          isMocked: globalMockedStatus,
+          visitType: "branch",
+          noteType: "general",
+          notes: visitNotes.trim() || undefined,
+        });
+        toast.success(`✅ تم تسجيل دخولك في ${branchName}`);
+        refetchVisits();
+      } else if (type === "check_in_external") {
+        await checkInMutation.mutateAsync({
+          latitude: gpsLocation!.lat.toString(),
+          longitude: gpsLocation!.lon.toString(),
+          isMocked: globalMockedStatus,
+          visitType: "external_mission",
+          noteType: "external_mission",
+          notes: visitNotes.trim(),
+        });
+        toast.success(`✅ تم بدء مأمورية خارجية بنجاح`);
+        refetchVisits();
+      } else if (type === "check_out_short") {
+        await checkOutMutation.mutateAsync({ 
+          visitId: activeVisit.id,
+          notes: visitNotes.trim(),
+          noteType: "short_visit",
+        });
+        toast.success("🔴 تم تسجيل خروجك — سلامات!");
+        refetchVisits();
+      }
+      setNotesModalState({ isOpen: false, type: "check_in_branch" });
+    } catch (err: any) {
+      toast.error(`❌ حدث خطأ: ${err.message || String(err)}`);
     }
   };
 
@@ -164,6 +234,28 @@ export default function BranchCheckIn() {
           font-size: 11px;
           font-weight: 600;
         }
+        
+        .external-mission-btn {
+          position: absolute;
+          top: 70px;
+          left: 16px;
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 14px;
+          border-radius: 10px;
+          background: rgba(139, 92, 246, 0.9);
+          border: 1px solid rgba(255,255,255,0.2);
+          font-size: 12px;
+          font-weight: 700;
+          cursor: pointer;
+          color: white;
+          box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+          transition: all 0.2s;
+        }
+        .external-mission-btn:hover { background: rgba(139, 92, 246, 1); transform: translateY(-1px); }
+        .external-mission-btn:active { transform: translateY(1px); }
 
         .bottom-card-container {
           position: absolute;
@@ -272,7 +364,6 @@ export default function BranchCheckIn() {
               flyToZoom={16}
               className="h-full w-full"
             >
-              {/* دوائر النطاق حول كل فرع — تشوف بعينك جوه ولا بره */}
               {branchesWithDistance.map((b: any) =>
                 b.latitude && b.longitude ? (
                   <GeofenceCircle
@@ -285,7 +376,6 @@ export default function BranchCheckIn() {
                   />
                 ) : null
               )}
-              {/* بنرات الفروع بأماكنها الحقيقية */}
               {branchesWithDistance.map((b: any) =>
                 b.latitude && b.longitude ? (
                   <MapMarker
@@ -297,7 +387,6 @@ export default function BranchCheckIn() {
                   />
                 ) : null
               )}
-              {/* بنرتك الحقيقية — بتتحرك معاك */}
               {gpsLocation && (
                 <MapMarker lat={gpsLocation.lat} lng={gpsLocation.lon} label="أنت" color="#f59e0b" />
               )}
@@ -305,7 +394,7 @@ export default function BranchCheckIn() {
           </div>
         )}
 
-        {/* ── قائمة الفروع (وضع القائمة الحقيقي) ── */}
+        {/* ── قائمة الفروع ── */}
         {view === "list" && (
           <div className="branches-scroll">
             {sortedBranches.map((b: any) => (
@@ -332,7 +421,7 @@ export default function BranchCheckIn() {
                 {!activeVisit && b.inRange && (
                   <button
                     className="mini-checkin-btn"
-                    onClick={() => handleManualCheckIn(b.id)}
+                    onClick={() => openCheckInModal(b.id)}
                     disabled={checkInMutation.isPending}
                   >
                     دخول
@@ -368,7 +457,7 @@ export default function BranchCheckIn() {
           </button>
         </div>
 
-        {/* ── حالة الـ GPS الحقيقية ── */}
+        {/* حالة الـ GPS الحقيقية */}
         {view === "map" && gpsLocation && (
           <div className="gps-chip">
             <span style={{ color: "#34d399" }}>●</span>
@@ -379,7 +468,18 @@ export default function BranchCheckIn() {
           </div>
         )}
 
-        {/* زرار موقعي — بيشتغل فعلاً وبيثبت الخريطة عليك */}
+        {/* زر المأمورية الخارجية - يظهر دائمًا */}
+        {!activeVisit && gpsLocation && (
+          <button 
+            className="external-mission-btn" 
+            onClick={openExternalMissionModal}
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 16 }}>explore</span>
+            مأمورية خارجية
+          </button>
+        )}
+
+        {/* زرار موقعي */}
         {view === "map" && (
           <div className="floating-sidebar">
             <button
@@ -416,11 +516,11 @@ export default function BranchCheckIn() {
           <div className="check-in-card">
             <div className="card-header">
               <div className="branch-info">
-                <h2>{closestBranch?.name || "مفيش فروع متسابة لك"}</h2>
+                <h2>{activeVisit?.branchName || closestBranch?.name || "مفيش فروع قريبة"}</h2>
                 <p>
                   {gpsLocation
                     ? activeVisit
-                      ? `انت مسجل حالياً في ${activeVisit.branchName}`
+                      ? `انت مسجل حالياً في ${activeVisit.branchName || "مأمورية خارجية"}`
                       : closestBranch?.inRange
                         ? "✅ انت داخل نطاق الفرع — تقدر تسجل دخول"
                         : `أقرب فرع على بعد ${formatDistance(closestBranch?.distanceM ?? Infinity)}`
@@ -440,7 +540,7 @@ export default function BranchCheckIn() {
                   </button>
                   <button
                     className="action-button btn-confirm-yes"
-                    onClick={handleManualCheckOut}
+                    onClick={handleManualCheckOutConfirm}
                     disabled={checkOutMutation.isPending}
                   >
                     {checkOutMutation.isPending ? <Loader2 className="animate-spin" /> : "نعم، سجل خروجي"}
@@ -449,7 +549,7 @@ export default function BranchCheckIn() {
               ) : (
                 <button
                   className="action-button btn-red"
-                  onClick={() => setConfirmingCheckout(true)}
+                  onClick={handleManualCheckOutClick}
                   disabled={checkOutMutation.isPending}
                 >
                   {checkOutMutation.isPending ? <Loader2 className="animate-spin" /> : "تسجيل الخروج"}
@@ -458,7 +558,7 @@ export default function BranchCheckIn() {
             ) : (
               <button
                 className="action-button btn-cyan"
-                onClick={() => closestBranch && handleManualCheckIn(closestBranch.id)}
+                onClick={() => closestBranch && openCheckInModal(closestBranch.id)}
                 disabled={!closestBranch || !closestBranch.inRange || checkInMutation.isPending}
                 title={!closestBranch?.inRange ? "لازم تكون داخل نطاق الفرع الأول" : ""}
               >
@@ -474,6 +574,45 @@ export default function BranchCheckIn() {
           </div>
         </div>
       </div>
+
+      {/* ── مودال النوتس ── */}
+      <Dialog open={notesModalState.isOpen} onOpenChange={(open) => {
+        if (!open) setNotesModalState({ ...notesModalState, isOpen: false });
+      }}>
+        <DialogContent className="sm:max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>
+              {notesModalState.type === "check_in_external" && "تفاصيل المأمورية الخارجية"}
+              {notesModalState.type === "check_in_branch" && "تسجيل زيارة فرع"}
+              {notesModalState.type === "check_out_short" && "توضيح سبب الزيارة القصيرة"}
+            </DialogTitle>
+            <DialogDescription>
+              {notesModalState.type === "check_in_external" && "أدخل الوجهة أو سبب المأمورية الخارجية لتوثيقها."}
+              {notesModalState.type === "check_in_branch" && "يمكنك كتابة ملاحظات إضافية لهذه الزيارة (اختياري)."}
+              {notesModalState.type === "check_out_short" && "مدة الزيارة كانت قصيرة جدًا. يجب توضيح السبب لمديرك."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Textarea
+              placeholder={notesModalState.type === "check_in_branch" ? "ملاحظات اختيارية..." : "اكتب التفاصيل هنا..."}
+              value={visitNotes}
+              onChange={(e) => setVisitNotes(e.target.value)}
+              className="min-h-[120px] resize-none focus-visible:ring-[#0fa5f8]"
+            />
+          </div>
+          <DialogFooter>
+            <button
+              onClick={submitModal}
+              disabled={checkInMutation.isPending || checkOutMutation.isPending}
+              className="w-full bg-[#0fa5f8] hover:bg-[#0fa5f8]/90 text-white font-bold py-3 px-4 rounded-xl flex justify-center items-center gap-2"
+            >
+              {(checkInMutation.isPending || checkOutMutation.isPending) && <Loader2 className="animate-spin w-5 h-5" />}
+              {notesModalState.type === "check_in_branch" ? "تسجيل الدخول الآن" : 
+               notesModalState.type === "check_out_short" ? "تأكيد وتسجيل الخروج" : "بدء المأمورية"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

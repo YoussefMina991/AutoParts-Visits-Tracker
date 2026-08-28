@@ -232,12 +232,28 @@ export default function VisitHistory() {
                     </div>
                   )}
                   <div className="item-details">
-                    <h4>{visit.branchName}</h4>
+                    <h4>{visit.branchName ?? "مأمورية خارجية"}</h4>
                     <p>
                       {format(checkInTime, "EEEE d MMMM", { locale: ar })}
                       {durationMin !== null && ` • ${durationMin >= 60 ? `${Math.floor(durationMin / 60)} س ${durationMin % 60} د` : `${durationMin} دقيقة`}`}
                       {visit.distanceToPrevBranchKm && ` • ${(parseFloat(visit.distanceToPrevBranchKm)).toFixed(1)} كم`}
                     </p>
+                    <div>
+                      {visit.visitType === "external_mission" && (
+                        <span className="tag" style={{ background: "rgba(139,92,246,0.12)", color: "#8b5cf6", marginTop: 4, display: "inline-block", marginLeft: 6 }}>مأمورية خارجية</span>
+                      )}
+                      {visit.noteType === "short_visit" && (
+                        <span className="tag" style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", marginTop: 4, display: "inline-block", marginLeft: 6 }}>زيارة قصيرة</span>
+                      )}
+                      {visit.isMocked === "yes" && (
+                        <span className="tag" style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", marginTop: 4, display: "inline-block", marginLeft: 6 }}>وهمية</span>
+                      )}
+                    </div>
+                    {visit.notes && (
+                      <div style={{ marginTop: 8, fontSize: 12, color: 'rgba(255,255,255,0.85)', background: 'rgba(255,255,255,0.05)', padding: '8px 10px', borderRadius: 8, borderLeft: '3px solid #0fa5f8', whiteSpace: 'pre-wrap' }}>
+                        {visit.notes}
+                      </div>
+                    )}
                   </div>
                   <div className="item-status">
                     <span className="time">{format(checkInTime, "hh:mm a")}</span>

@@ -14,6 +14,8 @@ interface Visit {
   isMocked: "yes" | "no";
   photoUrl: string | null;
   notes: string | null;
+  visitType: "branch" | "external_mission";
+  noteType: "general" | "short_visit" | "non_primary" | "external_mission";
   branchName: string;
   branchCode: string;
   managerName: string;
@@ -286,8 +288,16 @@ function DayCard({ group }: { group: DayGroup }) {
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="font-bold text-sm text-[#111827]" style={{ fontFamily: "'Cairo', sans-serif" }}>{v.branchName}</span>
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#F4F4F5] text-[#18181B] font-mono">{v.branchCode}</span>
+                            <span className="font-bold text-sm text-[#111827]" style={{ fontFamily: "'Cairo', sans-serif" }}>{v.branchName ?? "مأمورية خارجية"}</span>
+                            {v.branchCode && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#F4F4F5] text-[#18181B] font-mono">{v.branchCode}</span>
+                            )}
+                            {v.visitType === "external_mission" && (
+                              <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-purple-200">مأمورية خارجية</span>
+                            )}
+                            {v.noteType === "short_visit" && (
+                              <span className="bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-red-200">زيارة قصيرة</span>
+                            )}
                             {v.isMocked === "yes" && (
                               <span className="flex items-center gap-1 bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-red-200">
                                 <span className="material-symbols-outlined text-[12px]">warning</span>
@@ -332,7 +342,11 @@ function DayCard({ group }: { group: DayGroup }) {
                             </div>
                           )}
 
-                          {v.notes && <p className="mt-1 text-xs text-[#6B7280] italic">"{v.notes}"</p>}
+                          {v.notes && (
+                            <p className="mt-1 text-xs text-[#6B7280] bg-white p-2 rounded-md border border-[#E5E7EB] shadow-sm whitespace-pre-wrap border-l-2 border-l-[#0fa5f8]">
+                              {v.notes}
+                            </p>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           {v.photoUrl && <Camera className="w-4 h-4 text-[#18181B]" />}

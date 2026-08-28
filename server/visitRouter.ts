@@ -191,10 +191,12 @@ async function getManagerName(db: Db, userId: number): Promise<string> {
 }
 
 export const visitRouter = router({
-  // POST — manager checks in to a branch
+  // POST — manager checks in to a branch or external mission
   checkIn: protectedProcedure
     .input(z.object({
-      branchId: z.number().int().positive(),
+      branchId: z.number().int().positive().optional(),
+      visitType: z.enum(["branch", "external_mission"]).default("branch"),
+      noteType: z.enum(["general", "short_visit", "non_primary", "external_mission"]).default("general"),
       latitude: coordSchema,
       longitude: coordSchema,
       accuracy: z.string().max(32).optional(),
@@ -222,15 +224,20 @@ export const visitRouter = router({
           .where(and(eq(visits.managerId, manager.id), eq(visits.status, "checked_in"))).limit(1);
         if (existingVisits.length > 0) throw new Error("Already checked into a branch. Please check out first.");
 
-      const branchResult = await db.select().from(branches).where(eq(branches.id, input.branchId)).limit(1);
-      if (!branchResult[0]) throw new Error("Branch not found");
-      const branch = branchResult[0];
+      let branch: BranchRow | undefined;
+      
+      if (input.visitType === "branch" || input.branchId) {
+        if (!input.branchId) throw new Error("Branch ID is required for a branch visit.");
+        const branchResult = await db.select().from(branches).where(eq(branches.id, input.branchId)).limit(1);
+        if (!branchResult[0]) throw new Error("Branch not found");
+        branch = branchResult[0];
 
-      const dist = getDistanceMeters(
-        parseFloat(input.latitude), parseFloat(input.longitude),
-        parseFloat(branch.latitude), parseFloat(branch.longitude)
-      );
-      if (dist > (branch.geofenceRadiusMeters || 200) + 50) throw new Error("You are too far from the branch to check in.");
+        const dist = getDistanceMeters(
+          parseFloat(input.latitude), parseFloat(input.longitude),
+          parseFloat(branch.latitude), parseFloat(branch.longitude)
+        );
+        if (dist > (branch.geofenceRadiusMeters || 200) + 50) throw new Error("You are too far from the branch to check in.");
+      }
 
       let photoUrl: string | undefined;
       if (input.photoBase64) {
@@ -243,19 +250,21 @@ export const visitRouter = router({
       let isTeleporting = false;
       const teleportReasons: string[] = [];
 
-      const prevResult = await calcDistanceFromPrevBranch(
-        db, manager.id, branch.name,
-        parseFloat(branch.latitude), parseFloat(branch.longitude),
-        new Date()
-      );
-      if (prevResult !== null) {
-        const { km, prevBranchName, timeDiffMin } = prevResult;
-        if (isTeleportation(km, timeDiffMin)) {
-          isTeleporting = true;
-          const speedKmh = Math.round(km / (timeDiffMin / 60));
-          teleportReasons.push(
-            `TELEPORTATION:${prevBranchName}→${branch.name}:${km.toFixed(1)}km:${Math.round(timeDiffMin)}min:${speedKmh}kmh`
-          );
+      if (branch) {
+        const prevResult = await calcDistanceFromPrevBranch(
+          db, manager.id, branch.name,
+          parseFloat(branch.latitude), parseFloat(branch.longitude),
+          new Date()
+        );
+        if (prevResult !== null) {
+          const { km, prevBranchName, timeDiffMin } = prevResult;
+          if (isTeleportation(km, timeDiffMin)) {
+            isTeleporting = true;
+            const speedKmh = Math.round(km / (timeDiffMin / 60));
+            teleportReasons.push(
+              `TELEPORTATION:${prevBranchName}→${branch.name}:${km.toFixed(1)}km:${Math.round(timeDiffMin)}min:${speedKmh}kmh`
+            );
+          }
         }
       }
 
@@ -267,6 +276,8 @@ export const visitRouter = router({
 
       await db.insert(visits).values({
         managerId: manager.id, branchId: input.branchId,
+        visitType: input.visitType, noteType: input.noteType,
+
         latitudeIn: input.latitude, longitudeIn: input.longitude,
         accuracyIn: input.accuracy, photoUrl, notes: input.notes,
         status: "checked_in",
@@ -279,9 +290,10 @@ export const visitRouter = router({
       // 🚨 لو الزيارة وهمية — ابعت إشعار فوري للأدمن
       if (finalIsMocked) {
         const managerName = await getManagerName(db, ctx.user!.id);
+        const locationName = branch ? branch.name : "مأمورية خارجية";
         notifyOwner({
           title: "🚨 زيارة وهمية مكتشفة",
-          content: `المدير: ${managerName}\nالفرع: ${branch.name}\nالوقت: ${new Date().toLocaleString("ar-EG")}\n${isTeleporting ? "تم اكتشاف انتقال غير منطقي (Teleportation)" : "تحديد موقع وهمي"}`,
+          content: `المدير: ${managerName}\nالمكان: ${locationName}\nالوقت: ${new Date().toLocaleString("ar-EG")}\n${isTeleporting ? "تم اكتشاف انتقال غير منطقي (Teleportation)" : "تحديد موقع وهمي"}`,
         }).catch(() => {}); // لا نوقف الـ check-in لو فشل الإشعار
       }
 
@@ -336,7 +348,11 @@ export const visitRouter = router({
 
   // POST — manager checks out
   checkOut: protectedProcedure
-    .input(z.object({ visitId: z.number().int().positive() }))
+    .input(z.object({ 
+      visitId: z.number().int().positive(),
+      notes: z.string().max(1000).optional(),
+      noteType: z.enum(["general", "short_visit", "non_primary", "external_mission"]).optional()
+    }))
     .mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
@@ -349,11 +365,12 @@ export const visitRouter = router({
       const visitResult = await db.select({
         id:        visits.id,
         checkInAt: visits.checkInAt,
+        notes:     visits.notes,
         branchName: branches.name,
         branchLatitude: branches.latitude,
         branchLongitude: branches.longitude,
       }).from(visits)
-        .innerJoin(branches, eq(visits.branchId, branches.id))
+        .leftJoin(branches, eq(visits.branchId, branches.id))
         .where(and(
           eq(visits.id, input.visitId),
           eq(visits.managerId, manager.id),
@@ -366,6 +383,14 @@ export const visitRouter = router({
       const now = new Date();
       const visit = visitResult[0];
       const result = await finalizeCheckOut(db, manager.id, visit, now);
+
+      if (input.notes || input.noteType) {
+        const finalNotes = input.notes ? (visit.notes ? `${visit.notes}\n---\nخروج: ${input.notes}` : input.notes) : visit.notes;
+        await db.update(visits).set({
+          ...(input.noteType ? { noteType: input.noteType } : {}),
+          ...(input.notes ? { notes: finalNotes } : {}),
+        }).where(eq(visits.id, visit.id));
+      }
 
       // 🚨 إشعار للأدمن — teleporting أو زيارة قصيرة جداً
       if (result.isTeleporting) {
@@ -412,8 +437,9 @@ export const visitRouter = router({
         latitudeIn: visits.latitudeIn, longitudeIn: visits.longitudeIn,
         distanceToPrevBranchKm: visits.distanceToPrevBranchKm,
         isMocked: visits.isMocked,
+        visitType: visits.visitType, noteType: visits.noteType,
         branchName: branches.name, branchId: branches.id, branchCode: branches.code, branchAddress: branches.address,
-      }).from(visits).innerJoin(branches, eq(visits.branchId, branches.id))
+      }).from(visits).leftJoin(branches, eq(visits.branchId, branches.id))
         .where(whereClause).orderBy(desc(visits.checkInAt)).limit(input.limit).offset(input.offset);
       return { items, total };
     }),
@@ -449,10 +475,11 @@ export const visitRouter = router({
         status: visits.status, photoUrl: visits.photoUrl, notes: visits.notes,
         distanceToPrevBranchKm: visits.distanceToPrevBranchKm,
         isMocked: visits.isMocked,
+        visitType: visits.visitType, noteType: visits.noteType,
         branchName: branches.name, branchId: branches.id, branchCode: branches.code,
         managerName: users.name, managerEmail: users.email,
         managerPhotoUrl: managers.photoUrl,
-      }).from(visits).innerJoin(branches, eq(visits.branchId, branches.id))
+      }).from(visits).leftJoin(branches, eq(visits.branchId, branches.id))
         .innerJoin(managers, eq(visits.managerId, managers.id))
         .innerJoin(users, eq(managers.userId, users.id))
         .where(whereClause).orderBy(desc(visits.checkInAt)).limit(input.limit).offset(input.offset);
@@ -502,11 +529,12 @@ export const visitRouter = router({
         checkOutAt: visits.checkOutAt,
         status: visits.status,
         isMocked: visits.isMocked,
+        visitType: visits.visitType,
         branchName: branches.name,
         managerName: users.name,
         managerId: managers.id,
       }).from(visits)
-        .innerJoin(branches, eq(visits.branchId, branches.id))
+        .leftJoin(branches, eq(visits.branchId, branches.id))
         .innerJoin(managers, eq(visits.managerId, managers.id))
         .innerJoin(users, eq(managers.userId, users.id))
         .orderBy(desc(visits.checkInAt))
@@ -521,9 +549,10 @@ export const visitRouter = router({
     const items = await db.select({
       managerId: managers.id,
       branchName: branches.name,
+      visitType: visits.visitType,
       checkInAt: visits.checkInAt,
     }).from(visits)
-      .innerJoin(branches, eq(visits.branchId, branches.id))
+      .leftJoin(branches, eq(visits.branchId, branches.id))
       .innerJoin(managers, eq(visits.managerId, managers.id))
       .where(eq(visits.status, "checked_in"));
     return items;
@@ -658,7 +687,7 @@ export const visitRouter = router({
             branchLongitude: branches.longitude,
           })
             .from(visits)
-            .innerJoin(branches, eq(visits.branchId, branches.id))
+            .leftJoin(branches, eq(visits.branchId, branches.id))
             .where(and(eq(visits.id, visitId), eq(visits.managerId, manager.id)))
             .limit(1);
 
