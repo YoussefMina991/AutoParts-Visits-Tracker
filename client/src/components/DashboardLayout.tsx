@@ -4,46 +4,97 @@ import { trpc } from "@/lib/trpc";
 import { useState, useRef, useEffect } from "react";
 import { format } from "date-fns";
 import { AutoPartsLogo } from "./AutoPartsLogo";
+import { AdminLangProvider, useLang } from "@/lib/i18n";
+import { AdminThemeProvider, useAdminTheme } from "@/lib/adminTheme";
 
-// ─── Design Tokens (single source of truth) ──────────────────────────────────
-// BG:        #F4F4F5  surface: #FFFFFF  border: #E4E4E7
-// text-1:    #18181B  text-2:  #71717A  text-3: #A1A1AA
-// accent:    #18181B  red:     #DC2626  green:  #16A34A
-
+// ─── Menu definitions (labelKey resolved via i18n) ────────────────────────────
 const adminMenuGroups = [
   {
-    label: "Overview",
+    labelKey: "nav.overview",
     items: [
-      { icon: "dashboard",    label: "Dashboard",  path: "/" },
-      { icon: "sensors",      label: "Live Map",   path: "/live-map" },
-      { icon: "assessment",   label: "Reports",    path: "/reports" },
+      { icon: "dashboard",    labelKey: "nav.dashboard",  path: "/" },
+      { icon: "sensors",      labelKey: "nav.liveMap",    path: "/live-map" },
+      { icon: "assessment",   labelKey: "nav.reports",    path: "/reports" },
     ],
   },
   {
-    label: "Manage",
+    labelKey: "nav.manage",
     items: [
-      { icon: "account_tree", label: "Branches",   path: "/branches" },
-      { icon: "badge",        label: "Managers",   path: "/managers" },
-      { icon: "group",        label: "Users",      path: "/users" },
+      { icon: "account_tree", labelKey: "nav.branches",   path: "/branches" },
+      { icon: "badge",        labelKey: "nav.managers",   path: "/managers" },
+      { icon: "group",        labelKey: "nav.users",      path: "/users" },
     ],
   },
 ];
 
 const managerMenuGroups = [
   {
-    label: "Menu",
+    labelKey: "nav.menu",
     items: [
-      { icon: "dashboard",   label: "Home",    path: "/" },
-      { icon: "location_on", label: "Check In", path: "/check-in" },
-      { icon: "history",     label: "History",  path: "/history" },
-      { icon: "cloud_sync",  label: "Sync",     path: "/sync" },
+      { icon: "dashboard",   labelKey: "nav.home",     path: "/" },
+      { icon: "location_on", labelKey: "nav.checkIn",  path: "/check-in" },
+      { icon: "history",     labelKey: "nav.history",  path: "/history" },
+      { icon: "cloud_sync",  labelKey: "nav.sync",     path: "/sync" },
     ],
   },
 ];
 
+// ─── Language + Theme toggles (admin only) ────────────────────────────────────
+function AdminToggles() {
+  const { lang, setLang, t } = useLang();
+  const { theme, toggle } = useAdminTheme();
+
+  const btnBase: React.CSSProperties = {
+    width: 32,
+    height: 32,
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "var(--adm-text-2)",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    flexShrink: 0,
+    transition: "background .15s",
+  };
+  const hoverIn = (e: React.MouseEvent<HTMLButtonElement>) =>
+    (e.currentTarget.style.background = "var(--adm-bg)");
+  const hoverOut = (e: React.MouseEvent<HTMLButtonElement>) =>
+    (e.currentTarget.style.background = "transparent");
+
+  return (
+    <>
+      <button
+        title={t("common.langSwitchTitle")}
+        onClick={() => setLang(lang === "en" ? "ar" : "en")}
+        style={{ ...btnBase, fontSize: 12, fontWeight: 800, fontFamily: "inherit" }}
+        className="adm-icon-btn"
+        onMouseEnter={hoverIn}
+        onMouseLeave={hoverOut}
+      >
+        {lang === "en" ? "عربي" : "EN"}
+      </button>
+      <button
+        title={theme === "light" ? t("common.darkMode") : t("common.lightMode")}
+        onClick={toggle}
+        style={btnBase}
+        className="adm-icon-btn"
+        onMouseEnter={hoverIn}
+        onMouseLeave={hoverOut}
+      >
+        <span className="material-symbols-outlined" style={{ fontSize: 19 }}>
+          {theme === "light" ? "dark_mode" : "light_mode"}
+        </span>
+      </button>
+    </>
+  );
+}
+
 // ─── Notification Bell ────────────────────────────────────────────────────────
 function NotificationBell() {
   const [open, setOpen] = useState(false);
+  const { t } = useLang();
   const [seenIds, setSeenIds] = useState<Set<number>>(() => {
     try {
       const saved = localStorage.getItem("notif_seen_ids");
@@ -52,7 +103,6 @@ function NotificationBell() {
   });
   const ref = useRef<HTMLDivElement>(null);
 
-  // جيب آخر 20 زيارة وهمية
   const { data: mockedData, isLoading } = trpc.visit.adminList.useQuery(
     { limit: 20, offset: 0 },
     {
@@ -98,15 +148,15 @@ function NotificationBell() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "#71717A",
-          background: open ? "#F4F4F5" : "transparent",
+          color: "var(--adm-text-2)",
+          background: open ? "var(--adm-bg)" : "transparent",
           border: "none",
           cursor: "pointer",
           position: "relative",
           transition: "background .15s",
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "#F4F4F5")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = open ? "#F4F4F5" : "transparent")}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--adm-bg)")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = open ? "var(--adm-bg)" : "transparent")}
       >
         <span
           className="material-symbols-outlined"
@@ -120,19 +170,19 @@ function NotificationBell() {
             style={{
               position: "absolute",
               top: 4,
-              right: 4,
+              insetInlineEnd: 4,
               minWidth: 14,
               height: 14,
               borderRadius: 7,
-              background: "#DC2626",
-              color: "#fff",
+              background: "var(--adm-red)",
+              color: "var(--adm-accent-fg)",
               fontSize: 8,
               fontWeight: 800,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               padding: "0 3px",
-              border: "1.5px solid #fff",
+              border: "1.5px solid var(--adm-surface)",
             }}
           >
             {unseenCount > 9 ? "9+" : unseenCount}
@@ -146,12 +196,12 @@ function NotificationBell() {
           style={{
             position: "absolute",
             top: "calc(100% + 8px)",
-            right: 0,
+            insetInlineEnd: 0,
             width: 320,
-            background: "#fff",
-            border: "1px solid #E4E4E7",
+            background: "var(--adm-surface)",
+            border: "1px solid var(--adm-border)",
             borderRadius: 16,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.10)",
+            boxShadow: "var(--adm-shadow-lift)",
             zIndex: 999,
             overflow: "hidden",
           }}
@@ -163,18 +213,18 @@ function NotificationBell() {
               alignItems: "center",
               justifyContent: "space-between",
               padding: "12px 16px",
-              borderBottom: "1px solid #F4F4F5",
+              borderBottom: "1px solid var(--adm-bg)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span
                 className="material-symbols-outlined"
-                style={{ fontSize: 16, color: "#DC2626", fontVariationSettings: "'FILL' 1" }}
+                style={{ fontSize: 16, color: "var(--adm-red)", fontVariationSettings: "'FILL' 1" }}
               >
                 warning
               </span>
-              <p style={{ fontSize: 13, fontWeight: 700, color: "#18181B" }}>
-                زيارات وهمية مكتشفة
+              <p style={{ fontSize: 13, fontWeight: 700, color: "var(--adm-text-1)" }}>
+                {t("notif.title")}
               </p>
             </div>
             {mockedVisits.length > 0 && (
@@ -184,12 +234,12 @@ function NotificationBell() {
                   fontWeight: 700,
                   padding: "2px 8px",
                   borderRadius: 20,
-                  background: "#FEF2F2",
-                  color: "#DC2626",
-                  border: "1px solid #FECACA",
+                  background: "var(--adm-red-soft)",
+                  color: "var(--adm-red)",
+                  border: "1px solid var(--adm-red-soft-border)",
                 }}
               >
-                {mockedVisits.length} زيارة
+                {t("notif.count", { n: mockedVisits.length })}
               </span>
             )}
           </div>
@@ -200,10 +250,10 @@ function NotificationBell() {
               <div style={{ padding: "24px 16px", display: "flex", flexDirection: "column", gap: 12 }}>
                 {[1, 2, 3].map((i) => (
                   <div key={i} style={{ display: "flex", gap: 10 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 16, background: "#F4F4F5", flexShrink: 0 }} />
+                    <div style={{ width: 32, height: 32, borderRadius: 16, background: "var(--adm-bg)", flexShrink: 0 }} />
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
-                      <div style={{ height: 12, borderRadius: 4, background: "#F4F4F5" }} />
-                      <div style={{ height: 10, width: "60%", borderRadius: 4, background: "#F4F4F5" }} />
+                      <div style={{ height: 12, borderRadius: 4, background: "var(--adm-bg)" }} />
+                      <div style={{ height: 10, width: "60%", borderRadius: 4, background: "var(--adm-bg)" }} />
                     </div>
                   </div>
                 ))}
@@ -221,12 +271,12 @@ function NotificationBell() {
               >
                 <span
                   className="material-symbols-outlined"
-                  style={{ fontSize: 32, color: "#D4D4D8", fontVariationSettings: "'FILL' 1" }}
+                  style={{ fontSize: 32, color: "var(--adm-text-3)", fontVariationSettings: "'FILL' 1" }}
                 >
                   verified_user
                 </span>
-                <p style={{ fontSize: 12, color: "#A1A1AA", fontWeight: 500, textAlign: "center" }}>
-                  لا توجد زيارات وهمية مكتشفة
+                <p style={{ fontSize: 12, color: "var(--adm-text-2)", fontWeight: 500, textAlign: "center" }}>
+                  {t("notif.empty")}
                 </p>
               </div>
             ) : (
@@ -235,9 +285,9 @@ function NotificationBell() {
                 const checkin = new Date(v.checkInAt);
                 const timeAgo = (() => {
                   const diff = Math.round((Date.now() - checkin.getTime()) / 60000);
-                  if (diff < 1) return "الآن";
-                  if (diff < 60) return `منذ ${diff} دقيقة`;
-                  if (diff < 1440) return `منذ ${Math.floor(diff / 60)} ساعة`;
+                  if (diff < 1) return t("time.now");
+                  if (diff < 60) return t("time.minAgo", { n: diff });
+                  if (diff < 1440) return t("time.hourAgo", { n: Math.floor(diff / 60) });
                   return format(checkin, "d MMM");
                 })();
 
@@ -248,8 +298,8 @@ function NotificationBell() {
                       display: "flex",
                       gap: 10,
                       padding: "10px 16px",
-                      borderBottom: idx < mockedVisits.length - 1 ? "1px solid #F4F4F5" : "none",
-                      background: isNew ? "#FFFBFB" : "#fff",
+                      borderBottom: idx < mockedVisits.length - 1 ? "1px solid var(--adm-bg)" : "none",
+                      background: isNew ? "var(--adm-red-soft)" : "var(--adm-surface)",
                       transition: "background .2s",
                     }}
                   >
@@ -259,7 +309,7 @@ function NotificationBell() {
                         width: 32,
                         height: 32,
                         borderRadius: 10,
-                        background: "#FEF2F2",
+                        background: "var(--adm-red-soft)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -268,7 +318,7 @@ function NotificationBell() {
                     >
                       <span
                         className="material-symbols-outlined"
-                        style={{ fontSize: 16, color: "#DC2626", fontVariationSettings: "'FILL' 1" }}
+                        style={{ fontSize: 16, color: "var(--adm-red)", fontVariationSettings: "'FILL' 1" }}
                       >
                         location_off
                       </span>
@@ -281,13 +331,13 @@ function NotificationBell() {
                           style={{
                             fontSize: 12,
                             fontWeight: 700,
-                            color: "#18181B",
+                            color: "var(--adm-text-1)",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {v.managerName ?? "مدير غير معروف"}
+                          {v.managerName ?? t("notif.unknownManager")}
                         </p>
                         <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                           {isNew && (
@@ -296,12 +346,12 @@ function NotificationBell() {
                                 width: 6,
                                 height: 6,
                                 borderRadius: "50%",
-                                background: "#DC2626",
+                                background: "var(--adm-red)",
                                 display: "inline-block",
                               }}
                             />
                           )}
-                          <span style={{ fontSize: 10, color: "#A1A1AA", fontWeight: 500 }}>
+                          <span style={{ fontSize: 10, color: "var(--adm-text-3)", fontWeight: 500 }}>
                             {timeAgo}
                           </span>
                         </div>
@@ -309,7 +359,7 @@ function NotificationBell() {
                       <p
                         style={{
                           fontSize: 11,
-                          color: "#71717A",
+                          color: "var(--adm-text-2)",
                           marginTop: 2,
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -326,12 +376,12 @@ function NotificationBell() {
                           fontWeight: 700,
                           padding: "2px 7px",
                           borderRadius: 20,
-                          background: "#FEF2F2",
-                          color: "#DC2626",
-                          border: "1px solid #FECACA",
+                          background: "var(--adm-red-soft)",
+                          color: "var(--adm-red)",
+                          border: "1px solid var(--adm-red-soft-border)",
                         }}
                       >
-                        موقع وهمي
+                        {t("notif.chipSpoofed")}
                       </span>
                     </div>
                   </div>
@@ -342,7 +392,7 @@ function NotificationBell() {
 
           {/* Footer */}
           {mockedVisits.length > 0 && (
-            <div style={{ padding: "10px 16px", borderTop: "1px solid #F4F4F5" }}>
+            <div style={{ padding: "10px 16px", borderTop: "1px solid var(--adm-bg)" }}>
               <Link href="/reports">
                 <a
                   onClick={() => setOpen(false)}
@@ -353,20 +403,20 @@ function NotificationBell() {
                     gap: 6,
                     padding: "7px",
                     borderRadius: 10,
-                    background: "#F4F4F5",
+                    background: "var(--adm-bg)",
                     fontSize: 12,
                     fontWeight: 700,
-                    color: "#71717A",
+                    color: "var(--adm-text-2)",
                     textDecoration: "none",
                     transition: "background .15s",
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#E4E4E7")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "#F4F4F5")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--adm-border)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "var(--adm-bg)")}
                 >
                   <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
                     open_in_new
                   </span>
-                  عرض كل التقارير
+                  {t("notif.openReport")}
                 </a>
               </Link>
             </div>
@@ -377,9 +427,10 @@ function NotificationBell() {
   );
 }
 
-// ─── Main Layout ──────────────────────────────────────────────────────────────
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+// ─── Layout Body (inside providers) ───────────────────────────────────────────
+function DashboardLayoutBody({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
+  const { t, isRTL } = useLang();
   const [location] = useLocation();
 
   const isAdmin = user?.role === "admin";
@@ -387,14 +438,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div
-      dir="ltr"
-      style={{ fontFamily: "'Inter', -apple-system, sans-serif", background: "#F4F4F5" }}
-      className="min-h-screen flex overflow-hidden text-[#18181B]"
+      dir={isRTL ? "rtl" : "ltr"}
+      style={{ fontFamily: "'Inter', -apple-system, sans-serif", background: "var(--adm-bg)", color: "var(--adm-text-1)" }}
+      className="min-h-screen flex overflow-hidden"
     >
       {/* ── Sidebar ── */}
       <aside
         className="hidden md:flex flex-col w-[220px] h-screen sticky top-0 z-40 px-3 pt-6 pb-5"
-        style={{ background: "#F4F4F5" }}
+        style={{ background: "var(--adm-bg)" }}
       >
         {/* Brand */}
         <div className="flex items-center gap-2 px-2 mb-7">
@@ -407,8 +458,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <nav className="flex-1 space-y-5 overflow-y-auto" style={{ scrollbarWidth: "none" }}>
           {menuGroups.map((group, idx) => (
             <div key={idx}>
-              <p className="px-2 text-[10px] font-bold tracking-widest text-[#A1A1AA] uppercase mb-1.5">
-                {group.label}
+              <p className="px-2 text-[10px] font-bold tracking-widest text-[var(--adm-text-3)] uppercase mb-1.5">
+                {t(group.labelKey)}
               </p>
               <div className="space-y-0.5">
                 {group.items.map((item) => {
@@ -420,9 +471,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       <a
                         className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-semibold transition-all cursor-pointer ${
                           active
-                            ? "bg-[#18181B] text-white"
-                            : "text-[#71717A] hover:text-[#18181B] hover:bg-[#E4E4E7]/60"
+                            ? ""
+                            : "text-[var(--adm-text-2)] hover:text-[var(--adm-text-1)] hover:bg-[var(--adm-hover)]"
                         }`}
+                        style={
+                          active
+                            ? { background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }
+                            : undefined
+                        }
                       >
                         <span
                           className="material-symbols-outlined"
@@ -433,7 +489,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         >
                           {item.icon}
                         </span>
-                        {item.label}
+                        {t(item.labelKey)}
                       </a>
                     </Link>
                   );
@@ -444,67 +500,68 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         {/* Logout */}
-        <div className="pt-3" style={{ borderTop: "1px solid #E4E4E7" }}>
+        <div className="pt-3" style={{ borderTop: "1px solid var(--adm-border)" }}>
           <button
             onClick={logout}
-            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-semibold text-[#71717A] hover:text-[#EF4444] hover:bg-[#FEF2F2] transition-colors cursor-pointer"
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-[13px] font-semibold text-[var(--adm-text-2)] hover:text-[var(--adm-red)] hover:bg-[var(--adm-red-soft)] transition-colors cursor-pointer"
           >
             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
               logout
             </span>
-            Logout
+            {t("common.logout")}
           </button>
         </div>
       </aside>
 
       {/* ── White card wrapper ── */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden p-3 pl-0 md:p-4 md:pl-0">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden p-3 ps-0 md:p-4 md:ps-0">
         <div
-          className="flex-1 bg-white flex flex-col overflow-hidden"
+          className="flex-1 bg-[var(--adm-surface)] flex flex-col overflow-hidden"
           style={{
             borderRadius: 24,
-            border: "1px solid #E4E4E7",
-            boxShadow: "0 1px 16px rgba(0,0,0,0.04)",
+            border: "1px solid var(--adm-border)",
+            boxShadow: "var(--adm-shadow)",
           }}
         >
           {/* ── Top bar ── */}
           <header
             className="flex items-center justify-between px-5 py-3 shrink-0"
-            style={{ borderBottom: "1px solid #F4F4F5" }}
+            style={{ borderBottom: "1px solid var(--adm-bg)" }}
           >
             {/* Search */}
             <div className="relative flex-1 max-w-[280px]">
               <span
-                className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[#A1A1AA]"
+                className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-[var(--adm-text-3)]"
                 style={{ fontSize: 17 }}
               >
                 search
               </span>
               <input
                 type="text"
-                placeholder="Search..."
-                className="w-full h-8 pl-9 pr-3 rounded-full text-[13px] font-medium text-[#18181B] outline-none transition-all placeholder:text-[#A1A1AA]"
-                style={{ background: "#F4F4F5", border: "1px solid transparent" }}
+                placeholder={t("common.search")}
+                className="w-full h-8 ps-9 pe-3 rounded-full text-[13px] font-medium text-[var(--adm-text-1)] outline-none transition-all placeholder:text-[var(--adm-text-3)]"
+                style={{ background: "var(--adm-bg)", border: "1px solid transparent" }}
                 onFocus={(e) => {
-                  e.currentTarget.style.border = "1px solid #E4E4E7";
-                  e.currentTarget.style.background = "#fff";
+                  e.currentTarget.style.border = "1px solid var(--adm-border)";
+                  e.currentTarget.style.background = "var(--adm-surface)";
                 }}
                 onBlur={(e) => {
                   e.currentTarget.style.border = "1px solid transparent";
-                  e.currentTarget.style.background = "#F4F4F5";
+                  e.currentTarget.style.background = "var(--adm-bg)";
                 }}
               />
             </div>
 
             {/* Right */}
-            <div className="flex items-center gap-1.5 ml-3">
-              {/* Bell — للأدمن بس */}
+            <div className="flex items-center gap-1.5 ms-3">
+              {/* Admin-only toggles + bell */}
+              {isAdmin && <AdminToggles />}
               {isAdmin && <NotificationBell />}
 
               {/* Avatar */}
               <div
-                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[12px] text-white ml-1"
-                style={{ background: "#18181B" }}
+                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[12px] text-[var(--adm-accent-fg)] ms-1"
+                style={{ background: "var(--adm-accent)" }}
               >
                 {user?.name?.charAt(0)?.toUpperCase() || "A"}
               </div>
@@ -520,8 +577,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* ── Mobile bottom nav ── */}
       <nav
-        className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white"
-        style={{ borderTop: "1px solid #E4E4E7" }}
+        className="fixed bottom-0 inset-x-0 z-50 md:hidden bg-[var(--adm-surface)]"
+        style={{ borderTop: "1px solid var(--adm-border)" }}
       >
         <div className="flex justify-around items-center h-14 px-2">
           {menuGroups[0].items.map((item) => {
@@ -530,7 +587,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Link key={item.path} href={item.path}>
                 <a
                   className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-all cursor-pointer ${
-                    active ? "text-[#18181B]" : "text-[#A1A1AA]"
+                    active ? "text-[var(--adm-text-1)]" : "text-[var(--adm-text-3)]"
                   }`}
                 >
                   <span
@@ -543,7 +600,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                     {item.icon}
                   </span>
                   <span className="text-[9px] font-bold tracking-wide uppercase">
-                    {item.label}
+                    {t(item.labelKey)}
                   </span>
                 </a>
               </Link>
@@ -552,5 +609,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </nav>
     </div>
+  );
+}
+
+// ─── Main Layout (wraps everything in admin-scoped providers) ─────────────────
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AdminLangProvider>
+      <AdminThemeProvider>
+        <DashboardLayoutBody>{children}</DashboardLayoutBody>
+      </AdminThemeProvider>
+    </AdminLangProvider>
   );
 }

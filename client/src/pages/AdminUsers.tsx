@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
+import { useLang } from "@/lib/i18n";
 import {
   Dialog,
   DialogContent,
@@ -12,10 +13,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-// ─── Design Tokens — must match DashboardLayout exactly ──────────────────────
-// bg: #F4F4F5  surface: #FFFFFF  border: #E4E4E7
-// text-1: #18181B  text-2: #71717A  text-3: #A1A1AA
-// accent: #18181B  green: #16A34A  red: #DC2626
+// ─── Design tokens — CSS vars scoped to .admin-root (see index.css) ──────────
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type CreateForm = {
@@ -40,12 +38,12 @@ function Field({ label, icon, children }: { label: string; icon?: string; childr
     <div>
       <label
         className="flex items-center gap-1.5 text-[11px] font-bold tracking-widest uppercase mb-2"
-        style={{ color: "#A1A1AA" }}
+        style={{ color: "var(--adm-text-3)" }}
       >
         {icon && (
           <span
             className="material-symbols-outlined"
-            style={{ fontSize: 12, color: "#A1A1AA" }}
+            style={{ fontSize: 12, color: "var(--adm-text-3)" }}
           >
             {icon}
           </span>
@@ -80,22 +78,22 @@ function AdminInput({
         placeholder={placeholder}
         className="w-full h-10 px-3.5 rounded-xl text-[13px] font-medium outline-none transition-all"
         style={{
-          background: "#F4F4F5",
-          border: "1px solid #E4E4E7",
-          color: "#18181B",
-          paddingLeft: suffix ? 36 : undefined,
+          background: "var(--adm-bg)",
+          border: "1px solid var(--adm-border)",
+          color: "var(--adm-text-1)",
+          paddingInlineEnd: suffix ? 36 : undefined,
         }}
         onFocus={(e) => {
-          e.currentTarget.style.border = "1px solid #18181B";
-          e.currentTarget.style.background = "#fff";
+          e.currentTarget.style.border = "1px solid var(--adm-accent)";
+          e.currentTarget.style.background = "var(--adm-surface)";
         }}
         onBlur={(e) => {
-          e.currentTarget.style.border = "1px solid #E4E4E7";
-          e.currentTarget.style.background = "#F4F4F5";
+          e.currentTarget.style.border = "1px solid var(--adm-border)";
+          e.currentTarget.style.background = "var(--adm-bg)";
         }}
       />
       {suffix && (
-        <div className="absolute left-3 top-1/2 -translate-y-1/2">{suffix}</div>
+        <div className="absolute end-3 top-1/2 -translate-y-1/2">{suffix}</div>
       )}
     </div>
   );
@@ -109,12 +107,13 @@ function RoleSelector({
   value: "user" | "admin";
   onChange: (v: "user" | "admin") => void;
 }) {
+  const { t } = useLang();
   return (
     <div className="grid grid-cols-2 gap-2">
       {(
         [
-          { role: "user", label: "مدير فرع", icon: "manage_accounts" },
-          { role: "admin", label: "أدمن نظام", icon: "shield" },
+          { role: "user", label: t("users.roleOptionManager"), icon: "manage_accounts" },
+          { role: "admin", label: t("users.roleOptionAdmin"), icon: "shield" },
         ] as const
       ).map(({ role, label, icon }) => {
         const active = value === role;
@@ -125,9 +124,9 @@ function RoleSelector({
             onClick={() => onChange(role)}
             className="flex items-center gap-2 p-3 rounded-xl border transition-all cursor-pointer"
             style={{
-              background: active ? "#18181B" : "#F4F4F5",
-              borderColor: active ? "#18181B" : "#E4E4E7",
-              color: active ? "#fff" : "#71717A",
+              background: active ? "var(--adm-accent)" : "var(--adm-bg)",
+              borderColor: active ? "var(--adm-accent)" : "var(--adm-border)",
+              color: active ? "var(--adm-accent-fg)" : "var(--adm-text-2)",
             }}
           >
             <span
@@ -149,6 +148,8 @@ function RoleSelector({
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminUsers() {
+  const { t, lang } = useLang();
+  const locale = lang === "ar" ? ar : undefined;
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -173,7 +174,7 @@ export default function AdminUsers() {
 
   const createMutation = trpc.users.create.useMutation({
     onSuccess: () => {
-      toast.success("تم إنشاء الحساب");
+      toast.success(t("users.toastCreated"));
       refetch();
       setCreateOpen(false);
       setForm(emptyCreate);
@@ -182,7 +183,7 @@ export default function AdminUsers() {
   });
   const updateMutation = trpc.users.update.useMutation({
     onSuccess: () => {
-      toast.success("تم تحديث البيانات");
+      toast.success(t("users.toastUpdated"));
       refetch();
       setEditOpen(false);
       setEditForm(null);
@@ -191,7 +192,7 @@ export default function AdminUsers() {
   });
   const deleteMutation = trpc.users.delete.useMutation({
     onSuccess: () => {
-      toast.success("تم حذف الحساب");
+      toast.success(t("users.toastDeleted"));
       refetch();
       setDeleteOpen(false);
       setDeleteTarget(null);
@@ -202,7 +203,7 @@ export default function AdminUsers() {
   // 🔓 فك ربط الجهاز — يسمح للمستخدم بتسجيل الدخول من موبايل جديد
   const unbindMutation = trpc.users.unbindDevice.useMutation({
     onSuccess: () => {
-      toast.success("تم فك ربط الجهاز — المستخدم هيسجل دخول من موبايله الجديد وهيتربط تلقائياً");
+      toast.success(t("users.toastUnbound"));
       refetch();
       setUnbindTarget(null);
     },
@@ -211,11 +212,11 @@ export default function AdminUsers() {
 
   const handleCreate = () => {
     if (!form.username) {
-      toast.error("اسم المستخدم مطلوب");
+      toast.error(t("users.toastUsernameRequired"));
       return;
     }
     if (form.password.length < 6) {
-      toast.error("كلمة السر 6 أحرف على الأقل");
+      toast.error(t("users.toastPasswordShort"));
       return;
     }
     createMutation.mutate({
@@ -243,11 +244,11 @@ export default function AdminUsers() {
   const handleUpdate = () => {
     if (!editForm) return;
     if (!editForm.username) {
-      toast.error("اسم المستخدم مطلوب");
+      toast.error(t("users.toastUsernameRequired"));
       return;
     }
     if (editForm.password && editForm.password.length < 6) {
-      toast.error("كلمة السر 6 أحرف على الأقل");
+      toast.error(t("users.toastPasswordShort"));
       return;
     }
     updateMutation.mutate({
@@ -276,11 +277,11 @@ export default function AdminUsers() {
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "#18181B" }}>
-            المستخدمون
+          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "var(--adm-text-1)" }}>
+            {t("users.title")}
           </h1>
-          <p className="text-[13px] mt-0.5" style={{ color: "#71717A" }}>
-            إنشاء وتعديل وحذف حسابات الدخول
+          <p className="text-[13px] mt-0.5" style={{ color: "var(--adm-text-2)" }}>
+            {t("users.subtitle")}
           </p>
         </div>
         <button
@@ -289,13 +290,13 @@ export default function AdminUsers() {
             setShowPassword(false);
             setCreateOpen(true);
           }}
-          className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[13px] font-bold text-white transition-all hover:opacity-90 cursor-pointer"
-          style={{ background: "#18181B" }}
+          className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[13px] font-bold transition-all hover:opacity-90 cursor-pointer"
+          style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}
         >
           <span className="material-symbols-outlined" style={{ fontSize: 17 }}>
             person_add
           </span>
-          مستخدم جديد
+          {t("users.add")}
         </button>
       </div>
 
@@ -303,40 +304,40 @@ export default function AdminUsers() {
       <div className="grid grid-cols-3 gap-3">
         {[
           {
-            label: "الإجمالي",
+            label: t("users.kpiTotal"),
             value: isLoading ? "—" : allUsers.length,
             icon: "group",
-            color: "#18181B",
-            bg: "#F4F4F5",
+            color: "var(--adm-text-1)",
+            bg: "var(--adm-bg)",
           },
           {
-            label: "أدمن",
+            label: t("users.kpiAdmins"),
             value: isLoading ? "—" : admins.length,
             icon: "shield",
-            color: "#71717A",
-            bg: "#F4F4F5",
+            color: "var(--adm-text-2)",
+            bg: "var(--adm-bg)",
           },
           {
-            label: "مديرو فروع",
+            label: t("users.kpiManagers"),
             value: isLoading ? "—" : managers.length,
             icon: "manage_accounts",
-            color: "#16A34A",
-            bg: "#F0FDF4",
+            color: "var(--adm-green)",
+            bg: "var(--adm-green-soft)",
           },
         ].map(({ label, value, icon, color, bg }) => (
           <div
             key={label}
             className="flex items-center justify-between p-4"
             style={{
-              background: "#fff",
-              border: "1px solid #E4E4E7",
+              background: "var(--adm-surface)",
+              border: "1px solid var(--adm-border)",
               borderRadius: 16,
             }}
           >
             <div>
               <p
                 className="text-[10px] font-bold tracking-widest uppercase mb-1"
-                style={{ color: "#A1A1AA" }}
+                style={{ color: "var(--adm-text-3)" }}
               >
                 {label}
               </p>
@@ -366,46 +367,46 @@ export default function AdminUsers() {
       {/* ── Users Table ─────────────────────────────────────────────────────── */}
       <div
         style={{
-          background: "#fff",
-          border: "1px solid #E4E4E7",
+          background: "var(--adm-surface)",
+          border: "1px solid var(--adm-border)",
           borderRadius: 16,
           overflow: "hidden",
         }}
       >
         <div
           className="px-5 py-3 flex items-center justify-between"
-          style={{ borderBottom: "1px solid #F4F4F5" }}
+          style={{ borderBottom: "1px solid var(--adm-bg)" }}
         >
           <p
             className="text-[12px] font-bold tracking-widest uppercase"
-            style={{ color: "#A1A1AA" }}
+            style={{ color: "var(--adm-text-3)" }}
           >
-            كل الحسابات
+            {t("users.allAccounts")}
           </p>
-          <span className="text-[12px] font-medium" style={{ color: "#A1A1AA" }}>
-            {allUsers.length} حساب
+          <span className="text-[12px] font-medium" style={{ color: "var(--adm-text-3)" }}>
+            {t("users.count", { n: allUsers.length })}
           </span>
         </div>
 
         {isLoading ? (
           <div className="flex justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#A1A1AA" }} />
+            <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--adm-text-3)" }} />
           </div>
         ) : allUsers.length === 0 ? (
           <div className="py-16 flex flex-col items-center gap-3 text-center">
             <div
               className="w-12 h-12 rounded-2xl flex items-center justify-center"
-              style={{ background: "#F4F4F5" }}
+              style={{ background: "var(--adm-bg)" }}
             >
               <span
                 className="material-symbols-outlined"
-                style={{ fontSize: 24, color: "#A1A1AA" }}
+                style={{ fontSize: 24, color: "var(--adm-text-3)" }}
               >
                 person_off
               </span>
             </div>
-            <p className="text-[14px] font-bold" style={{ color: "#18181B" }}>
-              لا توجد حسابات
+            <p className="text-[14px] font-bold" style={{ color: "var(--adm-text-1)" }}>
+              {t("users.noAccounts")}
             </p>
           </div>
         ) : (
@@ -415,16 +416,16 @@ export default function AdminUsers() {
               return (
                 <div
                   key={u.id}
-                  className="flex flex-col md:flex-row md:items-center justify-between px-5 py-4 gap-3 transition-colors hover:bg-[#FAFAFA]"
-                  style={{ borderBottom: "1px solid #F4F4F5" }}
+                  className="flex flex-col md:flex-row md:items-center justify-between px-5 py-4 gap-3 transition-colors hover:bg-[var(--adm-chip)]"
+                  style={{ borderBottom: "1px solid var(--adm-bg)" }}
                 >
                   {/* Avatar + info */}
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div
                       className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[14px] flex-shrink-0"
                       style={{
-                        background: isAdminUser ? "#18181B" : "#F4F4F5",
-                        color: isAdminUser ? "#fff" : "#71717A",
+                        background: isAdminUser ? "var(--adm-accent)" : "var(--adm-bg)",
+                        color: isAdminUser ? "var(--adm-accent-fg)" : "var(--adm-text-2)",
                       }}
                     >
                       {(u.name ?? u.username).charAt(0).toUpperCase()}
@@ -433,34 +434,34 @@ export default function AdminUsers() {
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
                         <span
                           className="text-[13px] font-semibold"
-                          style={{ color: "#18181B" }}
+                          style={{ color: "var(--adm-text-1)" }}
                         >
                           {u.name ?? u.username}
                         </span>
                         <span
                           className="text-[11px] font-mono px-2 py-0.5 rounded-full"
-                          style={{ background: "#F4F4F5", color: "#71717A" }}
+                          style={{ background: "var(--adm-bg)", color: "var(--adm-text-2)" }}
                         >
                           @{u.username}
                         </span>
                         <span
                           className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                           style={{
-                            background: isAdminUser ? "#F4F4F5" : "#F0FDF4",
-                            color: isAdminUser ? "#18181B" : "#16A34A",
+                            background: isAdminUser ? "var(--adm-bg)" : "var(--adm-green-soft)",
+                            color: isAdminUser ? "var(--adm-text-1)" : "var(--adm-green)",
                           }}
                         >
-                          {isAdminUser ? "أدمن" : "مدير فرع"}
+                          {isAdminUser ? t("users.roleAdmin") : t("users.roleManager")}
                         </span>
                         {/* 🔒 حالة ربط الجهاز — للمديرين فقط */}
                         {!isAdminUser && (
                           <span
                             className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
                             style={{
-                              background: u.isDeviceBound ? "#EFF6FF" : "#FEFCE8",
-                              color: u.isDeviceBound ? "#2563EB" : "#A16207",
+                              background: u.isDeviceBound ? "var(--adm-blue-soft)" : "var(--adm-amber-soft)",
+                              color: u.isDeviceBound ? "var(--adm-blue)" : "var(--adm-amber)",
                             }}
-                            title={u.isDeviceBound ? "الحساب مربوط بموبايل محدد" : "لسه مسجلش دخول من أي موبايل"}
+                            title={u.isDeviceBound ? t("users.deviceBoundTitle") : t("users.deviceUnboundTitle")}
                           >
                             <span
                               className="material-symbols-outlined"
@@ -468,7 +469,7 @@ export default function AdminUsers() {
                             >
                               {u.isDeviceBound ? "smartphone" : "smartphone_question"}
                             </span>
-                            {u.isDeviceBound ? "جهاز مربوط" : "بدون جهاز"}
+                            {u.isDeviceBound ? t("users.deviceBound") : t("users.deviceUnbound")}
                           </span>
                         )}
                       </div>
@@ -476,7 +477,7 @@ export default function AdminUsers() {
                         {u.email && (
                           <span
                             className="text-[12px]"
-                            style={{ color: "#A1A1AA" }}
+                            style={{ color: "var(--adm-text-3)" }}
                           >
                             {u.email}
                           </span>
@@ -484,11 +485,10 @@ export default function AdminUsers() {
                         {u.lastSignedIn && (
                           <span
                             className="text-[12px] font-mono"
-                            style={{ color: "#A1A1AA" }}
+                            style={{ color: "var(--adm-text-3)" }}
                           >
-                            آخر دخول:{" "}
-                            {format(new Date(u.lastSignedIn), "dd MMM yyyy", {
-                              locale: ar,
+                            {t("users.lastLogin", {
+                              date: format(new Date(u.lastSignedIn), "dd MMM yyyy", { locale }),
                             })}
                           </span>
                         )}
@@ -504,12 +504,12 @@ export default function AdminUsers() {
                         onClick={() =>
                           setUnbindTarget({ id: u.id, name: u.name ?? u.username })
                         }
-                        title="فك ربط الجهاز (للسماح بموبايل جديد)"
-                        className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[#EFF6FF] cursor-pointer"
+                        title={t("users.unbindHint")}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[var(--adm-blue-soft)] cursor-pointer"
                       >
                         <span
                           className="material-symbols-outlined"
-                          style={{ fontSize: 16, color: "#2563EB" }}
+                          style={{ fontSize: 16, color: "var(--adm-blue)" }}
                         >
                           link_off
                         </span>
@@ -517,22 +517,22 @@ export default function AdminUsers() {
                     )}
                     <button
                       onClick={() => handleEdit(u)}
-                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[#F4F4F5] cursor-pointer"
+                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
                     >
                       <span
                         className="material-symbols-outlined"
-                        style={{ fontSize: 16, color: "#71717A" }}
+                        style={{ fontSize: 16, color: "var(--adm-text-2)" }}
                       >
                         edit
                       </span>
                     </button>
                     <button
                       onClick={() => handleDeleteClick(u)}
-                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[#FEF2F2] cursor-pointer"
+                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[var(--adm-red-soft)] cursor-pointer"
                     >
                       <span
                         className="material-symbols-outlined"
-                        style={{ fontSize: 16, color: "#DC2626" }}
+                        style={{ fontSize: 16, color: "var(--adm-red)" }}
                       >
                         delete
                       </span>
@@ -549,35 +549,35 @@ export default function AdminUsers() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent
           className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
-          style={{ background: "#fff", border: "1px solid #E4E4E7" }}
+          style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
             className="px-6 py-4"
-            style={{ borderBottom: "1px solid #F4F4F5" }}
+            style={{ borderBottom: "1px solid var(--adm-bg)" }}
           >
             <div className="flex items-center gap-3">
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: "#18181B" }}
+                style={{ background: "var(--adm-accent)" }}
               >
                 <span
-                  className="material-symbols-outlined text-white"
-                  style={{ fontSize: 16, fontVariationSettings: "'FILL' 1" }}
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 16, color: "var(--adm-accent-fg)", fontVariationSettings: "'FILL' 1" }}
                 >
                   person_add
                 </span>
               </div>
               <DialogTitle
                 className="text-[15px] font-bold"
-                style={{ color: "#18181B" }}
+                style={{ color: "var(--adm-text-1)" }}
               >
-                حساب جديد
+                {t("users.createTitle")}
               </DialogTitle>
             </div>
           </DialogHeader>
 
           <div className="px-6 py-5 space-y-4">
-            <Field label="الدور" icon="badge">
+            <Field label={t("users.fieldRole")} icon="badge">
               <RoleSelector
                 value={form.role}
                 onChange={(v) => setForm((f) => ({ ...f, role: v }))}
@@ -585,7 +585,7 @@ export default function AdminUsers() {
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="اسم المستخدم *" icon="alternate_email">
+              <Field label={t("users.fieldUsername")} icon="alternate_email">
                 <AdminInput
                   value={form.username}
                   onChange={(v) =>
@@ -597,7 +597,7 @@ export default function AdminUsers() {
                   placeholder="ahmed.ali"
                 />
               </Field>
-              <Field label="الاسم الكامل" icon="person">
+              <Field label={t("users.fieldFullName")} icon="person">
                 <AdminInput
                   value={form.name}
                   onChange={(v) => setForm((f) => ({ ...f, name: v }))}
@@ -606,12 +606,12 @@ export default function AdminUsers() {
               </Field>
             </div>
 
-            <Field label="كلمة السر *" icon="lock">
+            <Field label={t("users.fieldPassword")} icon="lock">
               <AdminInput
                 type={showPassword ? "text" : "password"}
                 value={form.password}
                 onChange={(v) => setForm((f) => ({ ...f, password: v }))}
-                placeholder="6 أحرف على الأقل"
+                placeholder={t("users.phPassword")}
                 suffix={
                   <button
                     type="button"
@@ -620,7 +620,7 @@ export default function AdminUsers() {
                   >
                     <span
                       className="material-symbols-outlined"
-                      style={{ fontSize: 16, color: "#A1A1AA" }}
+                      style={{ fontSize: 16, color: "var(--adm-text-3)" }}
                     >
                       {showPassword ? "visibility_off" : "visibility"}
                     </span>
@@ -629,7 +629,7 @@ export default function AdminUsers() {
               />
             </Field>
 
-            <Field label="البريد الإلكتروني" icon="mail">
+            <Field label={t("users.fieldEmail")} icon="mail">
               <AdminInput
                 type="email"
                 value={form.email}
@@ -641,17 +641,18 @@ export default function AdminUsers() {
             {form.role === "user" && (
               <div
                 className="flex items-start gap-2 p-3 rounded-xl"
-                style={{ background: "#F0FDF4", border: "1px solid #D1FAE5" }}
+                style={{ background: "var(--adm-green-soft)", border: "1px solid var(--adm-green-soft-border)" }}
               >
                 <span
                   className="material-symbols-outlined flex-shrink-0 mt-0.5"
-                  style={{ fontSize: 15, color: "#16A34A" }}
+                  style={{ fontSize: 15, color: "var(--adm-green)" }}
                 >
                   info
                 </span>
-                <p className="text-[12px] leading-relaxed" style={{ color: "#15803D" }}>
-                  بعد الإنشاء، اذهب لصفحة{" "}
-                  <strong>المديرين</strong> لتخصيص الفروع.
+                <p className="text-[12px] leading-relaxed" style={{ color: "var(--adm-text-1)" }}>
+                  {t("users.hintAfterCreate")}{" "}
+                  <strong>{t("users.hintAfterCreate2")}</strong>{" "}
+                  {t("users.hintAfterCreate3")}
                 </p>
               </div>
             )}
@@ -659,25 +660,25 @@ export default function AdminUsers() {
 
           <DialogFooter
             className="px-6 py-4 flex items-center justify-end gap-2"
-            style={{ borderTop: "1px solid #F4F4F5" }}
+            style={{ borderTop: "1px solid var(--adm-bg)" }}
           >
             <button
               onClick={() => setCreateOpen(false)}
-              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
-              style={{ color: "#71717A" }}
+              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
+              style={{ color: "var(--adm-text-2)" }}
             >
-              إلغاء
+              {t("common.cancel")}
             </button>
             <button
               onClick={handleCreate}
               disabled={createMutation.isPending}
-              className="h-9 px-5 rounded-xl text-[13px] font-bold text-white flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
-              style={{ background: "#18181B" }}
+              className="h-9 px-5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
+              style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}
             >
               {createMutation.isPending && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               )}
-              إنشاء الحساب
+              {t("users.create")}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -687,36 +688,36 @@ export default function AdminUsers() {
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent
           className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
-          style={{ background: "#fff", border: "1px solid #E4E4E7" }}
+          style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
             className="px-6 py-4"
-            style={{ borderBottom: "1px solid #F4F4F5" }}
+            style={{ borderBottom: "1px solid var(--adm-bg)" }}
           >
             <div className="flex items-center gap-3">
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: "#18181B" }}
+                style={{ background: "var(--adm-accent)" }}
               >
                 <span
-                  className="material-symbols-outlined text-white"
-                  style={{ fontSize: 16, fontVariationSettings: "'FILL' 1" }}
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 16, color: "var(--adm-accent-fg)", fontVariationSettings: "'FILL' 1" }}
                 >
                   edit
                 </span>
               </div>
               <DialogTitle
                 className="text-[15px] font-bold"
-                style={{ color: "#18181B" }}
+                style={{ color: "var(--adm-text-1)" }}
               >
-                تعديل الحساب
+                {t("users.editTitle")}
               </DialogTitle>
             </div>
           </DialogHeader>
 
           {editForm && (
             <div className="px-6 py-5 space-y-4">
-              <Field label="الدور" icon="badge">
+              <Field label={t("users.fieldRole")} icon="badge">
                 <RoleSelector
                   value={editForm.role}
                   onChange={(v) =>
@@ -725,7 +726,7 @@ export default function AdminUsers() {
                 />
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="اسم المستخدم *" icon="alternate_email">
+                <Field label={t("users.fieldUsername")} icon="alternate_email">
                   <AdminInput
                     value={editForm.username}
                     onChange={(v) =>
@@ -740,7 +741,7 @@ export default function AdminUsers() {
                     }
                   />
                 </Field>
-                <Field label="الاسم الكامل" icon="person">
+                <Field label={t("users.fieldFullName")} icon="person">
                   <AdminInput
                     value={editForm.name}
                     onChange={(v) =>
@@ -749,14 +750,14 @@ export default function AdminUsers() {
                   />
                 </Field>
               </div>
-              <Field label="كلمة السر الجديدة" icon="lock">
+              <Field label={t("users.fieldNewPassword")} icon="lock">
                 <AdminInput
                   type={showEditPassword ? "text" : "password"}
                   value={editForm.password}
                   onChange={(v) =>
                     setEditForm((f) => (f ? { ...f, password: v } : f))
                   }
-                  placeholder="اتركها فارغة للإبقاء على القديمة"
+                  placeholder={t("users.phKeepPassword")}
                   suffix={
                     <button
                       type="button"
@@ -765,7 +766,7 @@ export default function AdminUsers() {
                     >
                       <span
                         className="material-symbols-outlined"
-                        style={{ fontSize: 16, color: "#A1A1AA" }}
+                        style={{ fontSize: 16, color: "var(--adm-text-3)" }}
                       >
                         {showEditPassword ? "visibility_off" : "visibility"}
                       </span>
@@ -773,7 +774,7 @@ export default function AdminUsers() {
                   }
                 />
               </Field>
-              <Field label="البريد الإلكتروني" icon="mail">
+              <Field label={t("users.fieldEmail")} icon="mail">
                 <AdminInput
                   type="email"
                   value={editForm.email}
@@ -787,25 +788,25 @@ export default function AdminUsers() {
 
           <DialogFooter
             className="px-6 py-4 flex items-center justify-end gap-2"
-            style={{ borderTop: "1px solid #F4F4F5" }}
+            style={{ borderTop: "1px solid var(--adm-bg)" }}
           >
             <button
               onClick={() => setEditOpen(false)}
-              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
-              style={{ color: "#71717A" }}
+              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
+              style={{ color: "var(--adm-text-2)" }}
             >
-              إلغاء
+              {t("common.cancel")}
             </button>
             <button
               onClick={handleUpdate}
               disabled={updateMutation.isPending}
-              className="h-9 px-5 rounded-xl text-[13px] font-bold text-white flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
-              style={{ background: "#18181B" }}
+              className="h-9 px-5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
+              style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}
             >
               {updateMutation.isPending && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               )}
-              حفظ التعديلات
+              {t("common.saveChanges")}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -815,22 +816,22 @@ export default function AdminUsers() {
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent
           className="p-0 overflow-hidden sm:rounded-2xl max-w-sm"
-          style={{ background: "#fff", border: "1px solid #E4E4E7" }}
+          style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
             className="px-6 py-4"
-            style={{ borderBottom: "1px solid #F4F4F5" }}
+            style={{ borderBottom: "1px solid var(--adm-bg)" }}
           >
             <div className="flex items-center gap-3">
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: "#FEF2F2" }}
+                style={{ background: "var(--adm-red-soft)" }}
               >
                 <span
                   className="material-symbols-outlined"
                   style={{
                     fontSize: 16,
-                    color: "#DC2626",
+                    color: "var(--adm-red)",
                     fontVariationSettings: "'FILL' 1",
                   }}
                 >
@@ -839,31 +840,31 @@ export default function AdminUsers() {
               </div>
               <DialogTitle
                 className="text-[15px] font-bold"
-                style={{ color: "#DC2626" }}
+                style={{ color: "var(--adm-red)" }}
               >
-                تأكيد الحذف
+                {t("users.deleteTitle")}
               </DialogTitle>
             </div>
           </DialogHeader>
 
           <div className="px-6 py-5">
-            <p className="text-[13px] leading-relaxed" style={{ color: "#71717A" }}>
-              ستحذف حساب{" "}
-              <strong style={{ color: "#18181B" }}>{deleteTarget?.name}</strong>{" "}
-              بشكل نهائي. لا يمكن التراجع عن هذا الإجراء.
+            <p className="text-[13px] leading-relaxed" style={{ color: "var(--adm-text-2)" }}>
+              {t("users.deleteBody1")}{" "}
+              <strong style={{ color: "var(--adm-text-1)" }}>{deleteTarget?.name}</strong>{" "}
+              {t("users.deleteBody2")}
             </p>
           </div>
 
           <DialogFooter
             className="px-6 py-4 flex items-center justify-end gap-2"
-            style={{ borderTop: "1px solid #F4F4F5" }}
+            style={{ borderTop: "1px solid var(--adm-bg)" }}
           >
             <button
               onClick={() => setDeleteOpen(false)}
-              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
-              style={{ color: "#71717A" }}
+              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
+              style={{ color: "var(--adm-text-2)" }}
             >
-              إلغاء
+              {t("common.cancel")}
             </button>
             <button
               onClick={() =>
@@ -872,15 +873,15 @@ export default function AdminUsers() {
               disabled={deleteMutation.isPending}
               className="h-9 px-5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
               style={{
-                background: "#FEF2F2",
-                border: "1px solid #FECACA",
-                color: "#DC2626",
+                background: "var(--adm-red-soft)",
+                border: "1px solid var(--adm-red-soft-border)",
+                color: "var(--adm-red)",
               }}
             >
               {deleteMutation.isPending && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               )}
-              نعم، احذف
+              {t("users.deleteConfirm")}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -890,52 +891,51 @@ export default function AdminUsers() {
       <Dialog open={!!unbindTarget} onOpenChange={(open) => !open && setUnbindTarget(null)}>
         <DialogContent
           className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
-          style={{ background: "#fff", border: "1px solid #E4E4E7" }}
+          style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
             className="px-6 py-4"
-            style={{ borderBottom: "1px solid #F4F4F5" }}
+            style={{ borderBottom: "1px solid var(--adm-bg)" }}
           >
             <div className="flex items-center gap-3">
               <div
                 className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
-                style={{ background: "#EFF6FF" }}
+                style={{ background: "var(--adm-blue-soft)" }}
               >
                 <span
                   className="material-symbols-outlined"
-                  style={{ fontSize: 18, color: "#2563EB" }}
+                  style={{ fontSize: 18, color: "var(--adm-blue)" }}
                 >
                   link_off
                 </span>
               </div>
               <DialogTitle
                 className="text-[15px] font-bold"
-                style={{ color: "#18181B" }}
+                style={{ color: "var(--adm-text-1)" }}
               >
-                فك ربط الجهاز
+                {t("users.unbindTitle")}
               </DialogTitle>
             </div>
           </DialogHeader>
 
           <div className="px-6 py-5">
-            <p className="text-[13px] leading-relaxed" style={{ color: "#71717A" }}>
-              سيتم فك ربط جهاز المستخدم{" "}
-              <strong style={{ color: "#18181B" }}>{unbindTarget?.name}</strong>.
-              أول ما يسجل دخول من موبايله الجديد هيتربط بيه تلقائياً، ومش هينفع
-              يدخل من أي موبايل تاني غيره.
+            <p className="text-[13px] leading-relaxed" style={{ color: "var(--adm-text-2)" }}>
+              {t("users.unbindBody1")}{" "}
+              <strong style={{ color: "var(--adm-text-1)" }}>{unbindTarget?.name}</strong>.
+              {" "}{t("users.unbindBody2")}
             </p>
           </div>
 
           <DialogFooter
             className="px-6 py-4 flex items-center justify-end gap-2"
-            style={{ borderTop: "1px solid #F4F4F5" }}
+            style={{ borderTop: "1px solid var(--adm-bg)" }}
           >
             <button
               onClick={() => setUnbindTarget(null)}
-              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
-              style={{ color: "#71717A" }}
+              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
+              style={{ color: "var(--adm-text-2)" }}
             >
-              إلغاء
+              {t("common.cancel")}
             </button>
             <button
               onClick={() =>
@@ -944,15 +944,15 @@ export default function AdminUsers() {
               disabled={unbindMutation.isPending}
               className="h-9 px-5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
               style={{
-                background: "#EFF6FF",
-                border: "1px solid #BFDBFE",
-                color: "#2563EB",
+                background: "var(--adm-blue-soft)",
+                border: "1px solid var(--adm-blue-soft-border)",
+                color: "var(--adm-blue)",
               }}
             >
               {unbindMutation.isPending && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               )}
-              نعم، افك الربط
+              {t("users.unbindConfirm")}
             </button>
           </DialogFooter>
         </DialogContent>

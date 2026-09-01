@@ -767,3 +767,91 @@
       animation: pulse-soft 3s infinite ease-in-out;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ADMIN DASHBOARD THEME TOKENS (light + dark)
+   Scoped under .admin-root — mounted by AdminThemeProvider inside
+   DashboardLayout only. Manager pages are never affected.
+═══════════════════════════════════════════════════════════════ */
+.admin-root {
+  --adm-bg: #F4F4F5;
+  --adm-surface: #FFFFFF;
+  --adm-border: #E4E4E7;
+  --adm-text-1: #18181B;
+  --adm-text-2: #71717A;
+  --adm-text-3: #A1A1AA;
+  --adm-accent: #18181B;
+  --adm-accent-fg: #FFFFFF;
+  --adm-hover: rgba(228, 228, 231, 0.6);
+  --adm-chip: #FAFAFA;
+  --adm-red: #DC2626;
+  --adm-red-soft: #FEF2F2;
+  --adm-red-soft-border: #FECACA;
+  --adm-green: #16A34A;
+  --adm-green-soft: #F0FDF4;
+  --adm-green-soft-border: #BBF7D0;
+  --adm-blue: #2563EB;
+  --adm-blue-soft: #EFF6FF;
+  --adm-blue-soft-border: #BFDBFE;
+  --adm-amber: #D97706;
+  --adm-amber-soft: #FEF3C7;
+  --adm-amber-soft-border: #FDE68A;
+  --adm-online: #22C55E;
+  --adm-shadow: 0 1px 16px rgba(0, 0, 0, 0.04);
+  --adm-shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.admin-root.dark {
+  --adm-bg: #09090B;
+  --adm-surface: #18181B;
+  --adm-border: #27272A;
+  --adm-text-1: #FAFAFA;
+  --adm-text-2: #A1A1AA;
+  --adm-text-3: #71717A;
+  --adm-accent: #FAFAFA;
+  --adm-accent-fg: #18181B;
+  --adm-hover: rgba(39, 39, 42, 0.8);
+  --adm-chip: #1F1F23;
+  --adm-red: #F87171;
+  --adm-red-soft: rgba(248, 113, 113, 0.12);
+  --adm-red-soft-border: rgba(248, 113, 113, 0.30);
+  --adm-green: #4ADE80;
+  --adm-green-soft: rgba(74, 222, 128, 0.12);
+  --adm-green-soft-border: rgba(74, 222, 128, 0.30);
+  --adm-blue: #60A5FA;
+  --adm-blue-soft: rgba(96, 165, 250, 0.12);
+  --adm-blue-soft-border: rgba(96, 165, 250, 0.30);
+  --adm-amber: #FBBF24;
+  --adm-amber-soft: rgba(251, 191, 36, 0.12);
+  --adm-amber-soft-border: rgba(251, 191, 36, 0.30);
+  --adm-online: #4ADE80;
+  --adm-shadow: 0 1px 16px rgba(0, 0, 0, 0.40);
+  --adm-shadow-lift: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+
+/* Manager-card hover elevation + focus ring (Part A3) */
+.admin-root .adm-card-hover {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+.admin-root .adm-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--adm-shadow-lift);
+}
+.admin-root a.adm-manager-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  cursor: pointer;
+  border-radius: 16px;
+}
+.admin-root a.adm-manager-link:focus-visible {
+  outline: 2px solid var(--adm-blue);
+  outline-offset: 2px;
+}
+/* Round icon buttons (language / theme / bell) */
+.admin-root .adm-icon-btn {
+  transition: background 0.15s ease;
+}
+.admin-root .adm-icon-btn:hover {
+  background: var(--adm-bg);
+}

@@ -1,0 +1,80 @@
+[
+  {
+    "id": 1,
+    "username": "admin",
+    "passwordHash": "100000:de07b6348cbd87989cb41bfedbce56b232be00d520c3b57cb97706ee6323885f:e7e10e3b346b800a3675e74058d914d84d70e49d8b64d6b8b7eef9729ca9bc226f12617b0897a0085e56d15e61a85d492d89e0fef16689f3a13a252daf433763",
+    "name": "مدير النظام",
+    "email": null,
+    "role": "admin",
+    "createdAt": "2026-08-05T19:53:11.000Z",
+    "updatedAt": "2026-08-31T20:38:58.000Z",
+    "lastSignedIn": "2026-08-31T20:38:34.000Z",
+    "boundDeviceId": null,
+    "deviceBoundAt": null
+  },
+  {
+    "id": 28,
+    "username": "mohamed",
+    "passwordHash": "100000:78d198be92cc294b8c1a535f453ad3885361861f2d50c56dcb62f5aacdaa9b67:4d1ed3e879e3d9735033be8ec00236a5942b95a8aa62ca77f9672c306a46c0c1cb6c73feabf032d2e4941dd1ebf9b993ccdfff7144f01cbf50a27cde35de5a25",
+    "name": "Mohamed Abd Elsattar",
+    "email": null,
+    "role": "user",
+    "createdAt": "2026-08-22T07:05:03.000Z",
+    "updatedAt": "2026-08-24T09:04:12.000Z",
+    "lastSignedIn": "2026-08-24T09:04:13.000Z",
+    "boundDeviceId": null,
+    "deviceBoundAt": null
+  },
+  {
+    "id": 33,
+    "username": "remon",
+    "passwordHash": "100000:6e3e6ddaa0a70763fc5aac62214080fe06459129e4755bcaba10a3e60d4af734:da0b1f5ab3a8bb5059a0c58dd4213d52e03b1d78994f990102c72796d7925252c7a0852cc4ac2f355493034b97e182390390f1c32c063bbc5e7360205d5bba3e",
+    "name": "MR. Remon Bahaa",
+    "email": null,
+    "role": "admin",
+    "createdAt": "2026-08-26T07:20:38.000Z",
+    "updatedAt": "2026-08-26T07:20:38.000Z",
+    "lastSignedIn": "2026-08-26T07:20:38.000Z",
+    "boundDeviceId": null,
+    "deviceBoundAt": null
+  },
+  {
+    "id": 35,
+    "username": "s9test",
+    "passwordHash": "100000:72ce50ac74b62cad857445663a8603f6f68a43e973c9268531f4db673d185339:c28c583851a7da05f82ce2796108c67ea294b887b7e6a40686a4fae73b87a3f69c39092ec351d3dc80d489caa15b9616946b7cb4aae18bd661f75e9e7eaa6e85",
+    "name": "samsung s9",
+    "email": null,
+    "role": "user",
+    "createdAt": "2026-08-27T22:06:52.000Z",
+    "updatedAt": "2026-08-31T21:08:14.000Z",
+    "lastSignedIn": "2026-08-31T21:08:15.000Z",
+    "boundDeviceId": "e52e86a178831a0d",
+    "deviceBoundAt": "2026-08-27T22:07:49.000Z"
+  },
+  {
+    "id": 36,
+    "username": "ahmed",
+    "passwordHash": "100000:6a0f701801a9d257d3b88ca551467ccc5ab069fcef48c93ff6b12566212791ee:eb39cfde4768ac9ea8009fc0ab37372cc9c7b6731523021eca6c0ece356552415512b3305d2a4c6e39adfdc8cbf55130789528bb1198b4fa17679e64d53a7689",
+    "name": "Ahmed Othman",
+    "email": null,
+    "role": "user",
+    "createdAt": "2026-08-28T12:54:59.000Z",
+    "updatedAt": "2026-08-28T14:21:49.000Z",
+    "lastSignedIn": "2026-08-28T14:21:49.000Z",
+    "boundDeviceId": "ca974bd23bd553eb",
+    "deviceBoundAt": "2026-08-28T14:21:49.000Z"
+  },
+  {
+    "id": 37,
+    "username": "youssef",
+    "passwordHash": "100000:94a16ed972666156641fb5793d6d1bf665839744bf5289d31c278ce8a5bd3a41:624dcac4dd3db1e0efa402b01d3b0154c8b2f035b54c6377ef27d3bb55e4733567e2a3991053574654b6faf795fe1ad7ba82f48c01da1f9d2b461764a1545166",
+    "name": "Youssef Mina",
+    "email": null,
+    "role": "user",
+    "createdAt": "2026-09-01T09:25:05.000Z",
+    "updatedAt": "2026-09-01T09:28:51.000Z",
+    "lastSignedIn": "2026-09-01T09:28:52.000Z",
+    "boundDeviceId": "d91829501833d267",
+    "deviceBoundAt": "2026-09-01T09:28:52.000Z"
+  }
+]

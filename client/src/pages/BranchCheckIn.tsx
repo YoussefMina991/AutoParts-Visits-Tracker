@@ -12,12 +12,11 @@ import { Textarea } from "@/components/ui/textarea";
 export default function BranchCheckIn() {
   const [view, setView] = useState<"list" | "map">("map");
   const [fly, setFly] = useState<MapCenter | null>(null);
-  const [confirmingCheckout, setConfirmingCheckout] = useState(false);
   const didAutoFlyRef = useRef(false);
 
   const [notesModalState, setNotesModalState] = useState<{
     isOpen: boolean;
-    type: "check_in_branch" | "check_in_external" | "check_out_short";
+    type: "check_in_branch" | "check_in_external" | "check_out_short" | "check_out_general";
     branchId?: number;
   }>({ isOpen: false, type: "check_in_branch" });
   const [visitNotes, setVisitNotes] = useState("");
@@ -83,22 +82,9 @@ export default function BranchCheckIn() {
     if (durationMin < 20) {
       setNotesModalState({ isOpen: true, type: "check_out_short" });
       setVisitNotes("");
-      setConfirmingCheckout(false);
     } else {
-      setConfirmingCheckout(true);
-    }
-  };
-
-  const handleManualCheckOutConfirm = async () => {
-    if (!activeVisit) return;
-    try {
-      await checkOutMutation.mutateAsync({ visitId: activeVisit.id });
-      toast.success("🔴 تم تسجيل خروجك — سلامات!");
-      refetchVisits();
-    } catch (err: any) {
-      toast.error(`❌ فشل تسجيل الخروج: ${err.message || String(err)}`);
-    } finally {
-      setConfirmingCheckout(false);
+      setNotesModalState({ isOpen: true, type: "check_out_general" });
+      setVisitNotes("");
     }
   };
 
@@ -137,7 +123,7 @@ export default function BranchCheckIn() {
         });
         toast.success(`✅ تم بدء مأمورية خارجية بنجاح`);
         refetchVisits();
-      } else if (type === "check_out_short") {
+      } else if (type === "check_out_short" || type === "check_out_general") {
         // ✅ null guard: لو إحنا بينما المودال مفتوحة وبيتم refetch وتغيرت حالة الزيارة
         if (!activeVisit) {
           toast.error("انتهت الجلسة من تلقاء نفسها");
@@ -146,8 +132,8 @@ export default function BranchCheckIn() {
         }
         await checkOutMutation.mutateAsync({ 
           visitId: activeVisit.id,
-          notes: visitNotes.trim(),
-          noteType: "short_visit",
+          notes: visitNotes.trim() || undefined,
+          noteType: type === "check_out_short" ? "short_visit" : undefined,
         });
         toast.success("🔴 تم تسجيل خروجك — سلامات!");
         refetchVisits();
@@ -540,31 +526,13 @@ export default function BranchCheckIn() {
             </div>
 
             {activeVisit ? (
-              confirmingCheckout ? (
-                <div className="confirm-row">
-                  <button
-                    className="action-button btn-confirm-no"
-                    onClick={() => setConfirmingCheckout(false)}
-                  >
-                    لأ، فضلت داخل
-                  </button>
-                  <button
-                    className="action-button btn-confirm-yes"
-                    onClick={handleManualCheckOutConfirm}
-                    disabled={checkOutMutation.isPending}
-                  >
-                    {checkOutMutation.isPending ? <Loader2 className="animate-spin" /> : "نعم، سجل خروجي"}
-                  </button>
-                </div>
-              ) : (
-                <button
-                  className="action-button btn-red"
-                  onClick={handleManualCheckOutClick}
-                  disabled={checkOutMutation.isPending}
-                >
-                  {checkOutMutation.isPending ? <Loader2 className="animate-spin" /> : "تسجيل الخروج"}
-                </button>
-              )
+              <button
+                className="action-button btn-red"
+                onClick={handleManualCheckOutClick}
+                disabled={checkOutMutation.isPending}
+              >
+                {checkOutMutation.isPending ? <Loader2 className="animate-spin" /> : "تسجيل الخروج"}
+              </button>
             ) : (
               <button
                 className="action-button btn-cyan"
@@ -595,16 +563,18 @@ export default function BranchCheckIn() {
               {notesModalState.type === "check_in_external" && "تفاصيل المأمورية الخارجية"}
               {notesModalState.type === "check_in_branch" && "تسجيل زيارة فرع"}
               {notesModalState.type === "check_out_short" && "توضيح سبب الزيارة القصيرة"}
+              {notesModalState.type === "check_out_general" && "تسجيل الخروج"}
             </DialogTitle>
             <DialogDescription>
               {notesModalState.type === "check_in_external" && "أدخل الوجهة أو سبب المأمورية الخارجية لتوثيقها."}
               {notesModalState.type === "check_in_branch" && "يمكنك كتابة ملاحظات إضافية لهذه الزيارة (اختياري)."}
               {notesModalState.type === "check_out_short" && "مدة الزيارة كانت قصيرة جدًا. يجب توضيح السبب لمديرك."}
+              {notesModalState.type === "check_out_general" && "هل تريد إضافة ملاحظات عن هذه الزيارة قبل الخروج؟ (اختياري)"}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Textarea
-              placeholder={notesModalState.type === "check_in_branch" ? "ملاحظات اختيارية..." : "اكتب التفاصيل هنا..."}
+              placeholder={notesModalState.type === "check_in_branch" || notesModalState.type === "check_out_general" ? "ملاحظات اختيارية..." : "اكتب التفاصيل هنا..."}
               value={visitNotes}
               onChange={(e) => setVisitNotes(e.target.value)}
               className="min-h-[120px] resize-none focus-visible:ring-[#0fa5f8]"
@@ -618,7 +588,7 @@ export default function BranchCheckIn() {
             >
               {(checkInMutation.isPending || checkOutMutation.isPending) && <Loader2 className="animate-spin w-5 h-5" />}
               {notesModalState.type === "check_in_branch" ? "تسجيل الدخول الآن" : 
-               notesModalState.type === "check_out_short" ? "تأكيد وتسجيل الخروج" : "بدء المأمورية"}
+               (notesModalState.type === "check_out_short" || notesModalState.type === "check_out_general") ? "تأكيد وتسجيل الخروج" : "بدء المأمورية"}
             </button>
           </DialogFooter>
         </DialogContent>

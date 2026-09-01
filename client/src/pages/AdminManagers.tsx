@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { compressImageFile, type ImageExtension } from "@/lib/imageCompression";
+import { useLang } from "@/lib/i18n";
 import {
   Dialog,
   DialogContent,
@@ -11,10 +12,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-// ─── Design Tokens — must match DashboardLayout exactly ──────────────────────
-// bg: #F4F4F5  surface: #FFFFFF  border: #E4E4E7
-// text-1: #18181B  text-2: #71717A  text-3: #A1A1AA
-// accent: #18181B  green: #16A34A  red: #DC2626
+// ─── Design tokens — CSS vars scoped to .admin-root (see index.css) ──────────
 
 // ─── Assign Branches Dialog ───────────────────────────────────────────────────
 function AssignBranchesDialog({
@@ -24,6 +22,7 @@ function AssignBranchesDialog({
   manager: any;
   onClose: () => void;
 }) {
+  const { t } = useLang();
   const { data: branchesList = [] } = trpc.branch.list.useQuery();
   const { data: rawCurrentBranches = [], isLoading } =
     trpc.manager.getManagerBranches.useQuery(
@@ -37,7 +36,7 @@ function AssignBranchesDialog({
 
   const assignMutation = trpc.manager.assignBranches.useMutation({
     onSuccess: () => {
-      toast.success("تم تحديث الفروع المخصصة");
+      toast.success(t("managers.toastAssignUpdated"));
       onClose();
     },
     onError: (e) => toast.error(e.message),
@@ -56,20 +55,20 @@ function AssignBranchesDialog({
   return (
     <DialogContent
       className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
-      style={{ background: "#fff", border: "1px solid #E4E4E7" }}
+      style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
     >
       <DialogHeader
         className="px-6 py-4"
-        style={{ borderBottom: "1px solid #F4F4F5" }}
+        style={{ borderBottom: "1px solid var(--adm-bg)" }}
       >
         <div className="flex items-center gap-3">
           <div
             className="w-8 h-8 rounded-xl flex items-center justify-center"
-            style={{ background: "#18181B" }}
+            style={{ background: "var(--adm-accent)" }}
           >
             <span
-              className="material-symbols-outlined text-white"
-              style={{ fontSize: 16, fontVariationSettings: "'FILL' 1" }}
+              className="material-symbols-outlined"
+              style={{ fontSize: 16, color: "var(--adm-accent-fg)", fontVariationSettings: "'FILL' 1" }}
             >
               account_tree
             </span>
@@ -77,11 +76,11 @@ function AssignBranchesDialog({
           <div>
             <DialogTitle
               className="text-[15px] font-bold leading-none"
-              style={{ color: "#18181B" }}
+              style={{ color: "var(--adm-text-1)" }}
             >
-              تخصيص فروع
+              {t("managers.assignTitle")}
             </DialogTitle>
-            <p className="text-[12px] mt-0.5" style={{ color: "#71717A" }}>
+            <p className="text-[12px] mt-0.5" style={{ color: "var(--adm-text-2)" }}>
               {manager.userName ?? ""}
             </p>
           </div>
@@ -90,34 +89,34 @@ function AssignBranchesDialog({
 
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#A1A1AA" }} />
+          <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--adm-text-3)" }} />
         </div>
       ) : (
         <div className="px-6 py-4 space-y-3">
           {/* Controls */}
           <div className="flex items-center justify-between">
-            <p className="text-[12px]" style={{ color: "#71717A" }}>
-              <span className="font-bold" style={{ color: "#18181B" }}>
+            <p className="text-[12px]" style={{ color: "var(--adm-text-2)" }}>
+              <span className="font-bold" style={{ color: "var(--adm-text-1)" }}>
                 {selected.length}
               </span>{" "}
-              من {branches.length} فرع محدد
+              {t("managers.selectedSuffix", { total: branches.length })}
             </p>
             <div className="flex gap-1.5">
               <button
                 onClick={() =>
                   setSelectedIds(branches.map((b: any) => b.id))
                 }
-                className="text-[11px] font-bold px-3 py-1 rounded-lg transition-colors hover:bg-[#F4F4F5] cursor-pointer"
-                style={{ color: "#18181B" }}
+                className="text-[11px] font-bold px-3 py-1 rounded-lg transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
+                style={{ color: "var(--adm-text-1)" }}
               >
-                تحديد الكل
+                {t("managers.selectAll")}
               </button>
               <button
                 onClick={() => setSelectedIds([])}
-                className="text-[11px] font-bold px-3 py-1 rounded-lg transition-colors hover:bg-[#FEF2F2] cursor-pointer"
-                style={{ color: "#DC2626" }}
+                className="text-[11px] font-bold px-3 py-1 rounded-lg transition-colors hover:bg-[var(--adm-red-soft)] cursor-pointer"
+                style={{ color: "var(--adm-red)" }}
               >
-                إلغاء الكل
+                {t("managers.clearAll")}
               </button>
             </div>
           </div>
@@ -128,12 +127,12 @@ function AssignBranchesDialog({
               <div className="py-8 text-center">
                 <span
                   className="material-symbols-outlined block mb-2"
-                  style={{ fontSize: 32, color: "#A1A1AA" }}
+                  style={{ fontSize: 32, color: "var(--adm-text-3)" }}
                 >
                   domain_disabled
                 </span>
-                <p className="text-[13px]" style={{ color: "#71717A" }}>
-                  لا توجد فروع — أضف فروعاً أولاً
+                <p className="text-[13px]" style={{ color: "var(--adm-text-2)" }}>
+                  {t("managers.noBranchesYet")}
                 </p>
               </div>
             ) : (
@@ -143,42 +142,42 @@ function AssignBranchesDialog({
                   <button
                     key={b.id}
                     onClick={() => toggle(b.id)}
-                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-all cursor-pointer text-right"
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border transition-all cursor-pointer text-start"
                     style={{
-                      background: checked ? "#F4F4F5" : "#FAFAFA",
-                      borderColor: checked ? "#18181B" : "#E4E4E7",
+                      background: checked ? "var(--adm-bg)" : "var(--adm-chip)",
+                      borderColor: checked ? "var(--adm-accent)" : "var(--adm-border)",
                     }}
                   >
                     {/* Checkbox */}
                     <div
-                      className="w-4.5 h-4.5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
+                      className="rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all"
                       style={{
                         width: 18,
                         height: 18,
-                        background: checked ? "#18181B" : "transparent",
-                        borderColor: checked ? "#18181B" : "#D1D5DB",
+                        background: checked ? "var(--adm-accent)" : "transparent",
+                        borderColor: checked ? "var(--adm-accent)" : "var(--adm-text-3)",
                       }}
                     >
                       {checked && (
                         <span
-                          className="material-symbols-outlined text-white"
-                          style={{ fontSize: 12 }}
+                          className="material-symbols-outlined"
+                          style={{ fontSize: 12, color: "var(--adm-accent-fg)" }}
                         >
                           check
                         </span>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0 text-right">
+                    <div className="flex-1 min-w-0 text-start">
                       <p
                         className="text-[13px] font-semibold"
-                        style={{ color: "#18181B" }}
+                        style={{ color: "var(--adm-text-1)" }}
                       >
                         {b.name}
                       </p>
                       {b.address && (
                         <p
                           className="text-[11px] truncate"
-                          style={{ color: "#A1A1AA" }}
+                          style={{ color: "var(--adm-text-3)" }}
                         >
                           {b.address}
                         </p>
@@ -186,7 +185,7 @@ function AssignBranchesDialog({
                     </div>
                     <span
                       className="text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                      style={{ background: "#F4F4F5", color: "#71717A" }}
+                      style={{ background: "var(--adm-bg)", color: "var(--adm-text-2)" }}
                     >
                       {b.code}
                     </span>
@@ -200,14 +199,14 @@ function AssignBranchesDialog({
 
       <DialogFooter
         className="px-6 py-4 flex items-center justify-end gap-2"
-        style={{ borderTop: "1px solid #F4F4F5" }}
+        style={{ borderTop: "1px solid var(--adm-bg)" }}
       >
         <button
           onClick={onClose}
-          className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
-          style={{ color: "#71717A" }}
+          className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
+          style={{ color: "var(--adm-text-2)" }}
         >
-          إلغاء
+          {t("common.cancel")}
         </button>
         <button
           onClick={() =>
@@ -217,13 +216,13 @@ function AssignBranchesDialog({
             })
           }
           disabled={assignMutation.isPending || isLoading}
-          className="h-9 px-5 rounded-xl text-[13px] font-bold text-white flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
-          style={{ background: "#18181B" }}
+          className="h-9 px-5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
+          style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}
         >
           {assignMutation.isPending && (
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
           )}
-          حفظ التخصيص
+          {t("managers.saveAssign")}
         </button>
       </DialogFooter>
     </DialogContent>
@@ -232,6 +231,7 @@ function AssignBranchesDialog({
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminManagers() {
+  const { t } = useLang();
   const [createOpen, setCreateOpen] = useState(false);
   const [assignManager, setAssignManager] = useState<any>(null);
   const [editPhotoManager, setEditPhotoManager] = useState<any>(null);
@@ -247,7 +247,7 @@ export default function AdminManagers() {
   const { data: usersList = [] } = trpc.users.list.useQuery();
 
   const uploadPhotoMutation = trpc.manager.uploadPhoto.useMutation({
-    onError: (e) => toast.error("فشل رفع الصورة: " + e.message),
+    onError: (e) => toast.error(t("managers.toastPhotoFailed", { msg: e.message })),
   });
 
   const createMutation = trpc.manager.create.useMutation({
@@ -266,7 +266,7 @@ export default function AdminManagers() {
           });
         }
       }
-      toast.success("تم إضافة المدير");
+      toast.success(t("managers.toastAdded"));
       refetch();
       setCreateOpen(false);
       setForm({ userId: "", employeeCode: "", phone: "" });
@@ -276,7 +276,7 @@ export default function AdminManagers() {
   });
   const deleteMutation = trpc.manager.delete.useMutation({
     onSuccess: () => {
-      toast.success("تم حذف المدير");
+      toast.success(t("managers.toastDeleted"));
       refetch();
     },
     onError: (e) => toast.error(e.message),
@@ -286,7 +286,7 @@ export default function AdminManagers() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 15 * 1024 * 1024) {
-      toast.error("الصورة أكبر من 15 ميجا");
+      toast.error(t("managers.toastPhotoTooLarge"));
       return;
     }
     try {
@@ -294,13 +294,13 @@ export default function AdminManagers() {
       const { base64, extension } = await compressImageFile(file);
       setPhotoFile({ base64, ext: extension, preview: base64 });
     } catch (err: any) {
-      toast.error(`فشل معالجة الصورة: ${err.message || String(err)}`);
+      toast.error(t("managers.toastPhotoProcessFailed", { msg: err.message || String(err) }));
     }
   };
 
   const handleCreateSave = () => {
     if (!form.userId) {
-      toast.error("يرجى اختيار المستخدم");
+      toast.error(t("managers.toastPickUser"));
       return;
     }
     createMutation.mutate({
@@ -324,22 +324,22 @@ export default function AdminManagers() {
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "#18181B" }}>
-            المديرون
+          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "var(--adm-text-1)" }}>
+            {t("managers.title")}
           </h1>
-          <p className="text-[13px] mt-0.5" style={{ color: "#71717A" }}>
-            إدارة مديري الفروع وتخصيص مواقعهم
+          <p className="text-[13px] mt-0.5" style={{ color: "var(--adm-text-2)" }}>
+            {t("managers.subtitle")}
           </p>
         </div>
         <button
           onClick={() => setCreateOpen(true)}
-          className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[13px] font-bold text-white transition-all hover:opacity-90 cursor-pointer"
-          style={{ background: "#18181B" }}
+          className="h-9 px-4 flex items-center gap-1.5 rounded-xl text-[13px] font-bold transition-all hover:opacity-90 cursor-pointer"
+          style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}
         >
           <span className="material-symbols-outlined" style={{ fontSize: 17 }}>
             person_add
           </span>
-          مدير جديد
+          {t("managers.add")}
         </button>
       </div>
 
@@ -347,33 +347,33 @@ export default function AdminManagers() {
       <div className="grid grid-cols-2 gap-3">
         {[
           {
-            label: "إجمالي المديرين",
+            label: t("managers.kpiTotal"),
             value: isLoading ? "—" : managers.length,
             icon: "group",
-            color: "#18181B",
-            bg: "#F4F4F5",
+            color: "var(--adm-text-1)",
+            bg: "var(--adm-bg)",
           },
           {
-            label: "نشط حالياً",
+            label: t("managers.kpiActive"),
             value: isLoading ? "—" : activeCount,
             icon: "person_check",
-            color: "#16A34A",
-            bg: "#F0FDF4",
+            color: "var(--adm-green)",
+            bg: "var(--adm-green-soft)",
           },
         ].map(({ label, value, icon, color, bg }) => (
           <div
             key={label}
             className="flex items-center justify-between p-4"
             style={{
-              background: "#fff",
-              border: "1px solid #E4E4E7",
+              background: "var(--adm-surface)",
+              border: "1px solid var(--adm-border)",
               borderRadius: 16,
             }}
           >
             <div>
               <p
                 className="text-[10px] font-bold tracking-widest uppercase mb-1"
-                style={{ color: "#A1A1AA" }}
+                style={{ color: "var(--adm-text-3)" }}
               >
                 {label}
               </p>
@@ -403,47 +403,47 @@ export default function AdminManagers() {
       {/* ── Managers List ────────────────────────────────────────────────────── */}
       <div
         style={{
-          background: "#fff",
-          border: "1px solid #E4E4E7",
+          background: "var(--adm-surface)",
+          border: "1px solid var(--adm-border)",
           borderRadius: 16,
           overflow: "hidden",
         }}
       >
         <div
           className="px-5 py-3 flex items-center justify-between"
-          style={{ borderBottom: "1px solid #F4F4F5" }}
+          style={{ borderBottom: "1px solid var(--adm-bg)" }}
         >
-          <p className="text-[12px] font-bold tracking-widest uppercase" style={{ color: "#A1A1AA" }}>
-            قائمة المديرين
+          <p className="text-[12px] font-bold tracking-widest uppercase" style={{ color: "var(--adm-text-3)" }}>
+            {t("managers.listTitle")}
           </p>
-          <span className="text-[12px] font-medium" style={{ color: "#A1A1AA" }}>
-            {managers.length} مدير
+          <span className="text-[12px] font-medium" style={{ color: "var(--adm-text-3)" }}>
+            {t("managers.count", { n: managers.length })}
           </span>
         </div>
 
         {isLoading ? (
           <div className="flex justify-center py-16">
-            <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#A1A1AA" }} />
+            <Loader2 className="w-6 h-6 animate-spin" style={{ color: "var(--adm-text-3)" }} />
           </div>
         ) : managers.length === 0 ? (
           <div className="py-16 flex flex-col items-center gap-3 text-center">
             <div
               className="w-12 h-12 rounded-2xl flex items-center justify-center"
-              style={{ background: "#F4F4F5" }}
+              style={{ background: "var(--adm-bg)" }}
             >
               <span
                 className="material-symbols-outlined"
-                style={{ fontSize: 24, color: "#A1A1AA" }}
+                style={{ fontSize: 24, color: "var(--adm-text-3)" }}
               >
                 group_off
               </span>
             </div>
             <div>
-              <p className="text-[14px] font-bold" style={{ color: "#18181B" }}>
-                لا يوجد مديرون بعد
+              <p className="text-[14px] font-bold" style={{ color: "var(--adm-text-1)" }}>
+                {t("managers.noManagers")}
               </p>
-              <p className="text-[12px] mt-0.5" style={{ color: "#71717A" }}>
-                اضغط "مدير جديد" للبدء
+              <p className="text-[12px] mt-0.5" style={{ color: "var(--adm-text-2)" }}>
+                {t("managers.noManagersHint")}
               </p>
             </div>
           </div>
@@ -451,12 +451,12 @@ export default function AdminManagers() {
           <div>
             {managers.map((m) => {
               const isActive = m.isActive === "yes";
-              const initial = (m.userName ?? "م").charAt(0).toUpperCase();
+              const initial = (m.userName ?? t("managers.unknownUser")).charAt(0).toUpperCase();
               return (
                 <div
                   key={m.id}
-                  className="flex flex-col md:flex-row md:items-center justify-between px-5 py-4 gap-3 transition-colors hover:bg-[#FAFAFA]"
-                  style={{ borderBottom: "1px solid #F4F4F5" }}
+                  className="flex flex-col md:flex-row md:items-center justify-between px-5 py-4 gap-3 transition-colors hover:bg-[var(--adm-chip)]"
+                  style={{ borderBottom: "1px solid var(--adm-bg)" }}
                 >
                   {/* Left: avatar + info */}
                   <div className="flex items-center gap-3">
@@ -464,12 +464,12 @@ export default function AdminManagers() {
                       <img
                         src={m.photoUrl}
                         alt={m.userName ?? ""}
-                        style={{ width: 40, height: 40, borderRadius: 20, objectFit: "cover", flexShrink: 0, border: "1px solid #E4E4E7" }}
+                        style={{ width: 40, height: 40, borderRadius: 20, objectFit: "cover", flexShrink: 0, border: "1px solid var(--adm-border)" }}
                       />
                     ) : (
                       <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-[14px] flex-shrink-0"
-                        style={{ background: "#18181B" }}
+                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[14px] flex-shrink-0"
+                        style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}
                       >
                         {initial}
                       </div>
@@ -478,14 +478,14 @@ export default function AdminManagers() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <span
                           className="text-[13px] font-semibold"
-                          style={{ color: "#18181B" }}
+                          style={{ color: "var(--adm-text-1)" }}
                         >
-                          {m.userName ?? "مستخدم غير معروف"}
+                          {m.userName ?? t("managers.unknownUser")}
                         </span>
                         {m.employeeCode && (
                           <span
                             className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                            style={{ background: "#F4F4F5", color: "#71717A" }}
+                            style={{ background: "var(--adm-bg)", color: "var(--adm-text-2)" }}
                           >
                             {m.employeeCode}
                           </span>
@@ -493,18 +493,18 @@ export default function AdminManagers() {
                         <span
                           className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                           style={{
-                            background: isActive ? "#F0FDF4" : "#FEF2F2",
-                            color: isActive ? "#16A34A" : "#DC2626",
+                            background: isActive ? "var(--adm-green-soft)" : "var(--adm-red-soft)",
+                            color: isActive ? "var(--adm-green)" : "var(--adm-red)",
                           }}
                         >
-                          {isActive ? "نشط" : "متوقف"}
+                          {isActive ? t("managers.statusActive") : t("managers.statusStopped")}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 mt-0.5">
                         {m.userEmail && (
                           <span
                             className="text-[12px]"
-                            style={{ color: "#A1A1AA" }}
+                            style={{ color: "var(--adm-text-3)" }}
                           >
                             {m.userEmail}
                           </span>
@@ -512,7 +512,7 @@ export default function AdminManagers() {
                         {m.phone && (
                           <span
                             className="text-[12px] font-mono"
-                            style={{ color: "#A1A1AA" }}
+                            style={{ color: "var(--adm-text-3)" }}
                           >
                             {m.phone}
                           </span>
@@ -525,20 +525,20 @@ export default function AdminManagers() {
                   <div className="flex items-center gap-1.5 self-end md:self-auto">
                     <button
                       onClick={() => setEditPhotoManager(m)}
-                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[#F4F4F5] cursor-pointer"
-                      title="تحديث الصورة"
+                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
+                      title={t("managers.editPhoto")}
                     >
                       <span
                         className="material-symbols-outlined"
-                        style={{ fontSize: 15, color: "#18181B" }}
+                        style={{ fontSize: 15, color: "var(--adm-text-1)" }}
                       >
                         add_a_photo
                       </span>
                     </button>
                     <button
                       onClick={() => setAssignManager(m)}
-                      className="h-8 px-3 flex items-center gap-1.5 rounded-xl text-[12px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
-                      style={{ color: "#71717A", border: "1px solid #E4E4E7" }}
+                      className="h-8 px-3 flex items-center gap-1.5 rounded-xl text-[12px] font-semibold transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
+                      style={{ color: "var(--adm-text-2)", border: "1px solid var(--adm-border)" }}
                     >
                       <span
                         className="material-symbols-outlined"
@@ -546,18 +546,18 @@ export default function AdminManagers() {
                       >
                         account_tree
                       </span>
-                      تخصيص فروع
+                      {t("managers.assignBranches")}
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm("حذف هذا المدير؟"))
+                        if (confirm(t("managers.confirmDelete")))
                           deleteMutation.mutate({ id: m.id });
                       }}
-                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[#FEF2F2] cursor-pointer"
+                      className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[var(--adm-red-soft)] cursor-pointer"
                     >
                       <span
                         className="material-symbols-outlined"
-                        style={{ fontSize: 15, color: "#DC2626" }}
+                        style={{ fontSize: 15, color: "var(--adm-red)" }}
                       >
                         delete
                       </span>
@@ -574,29 +574,29 @@ export default function AdminManagers() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent
           className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
-          style={{ background: "#fff", border: "1px solid #E4E4E7" }}
+          style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
             className="px-6 py-4"
-            style={{ borderBottom: "1px solid #F4F4F5" }}
+            style={{ borderBottom: "1px solid var(--adm-bg)" }}
           >
             <div className="flex items-center gap-3">
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: "#18181B" }}
+                style={{ background: "var(--adm-accent)" }}
               >
                 <span
-                  className="material-symbols-outlined text-white"
-                  style={{ fontSize: 16, fontVariationSettings: "'FILL' 1" }}
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 16, color: "var(--adm-accent-fg)", fontVariationSettings: "'FILL' 1" }}
                 >
                   person_add
                 </span>
               </div>
               <DialogTitle
                 className="text-[15px] font-bold"
-                style={{ color: "#18181B" }}
+                style={{ color: "var(--adm-text-1)" }}
               >
-                مدير جديد
+                {t("managers.createTitle")}
               </DialogTitle>
             </div>
           </DialogHeader>
@@ -606,15 +606,15 @@ export default function AdminManagers() {
             <div>
               <label
                 className="flex items-center gap-1.5 text-[11px] font-bold tracking-widest uppercase mb-2"
-                style={{ color: "#A1A1AA" }}
+                style={{ color: "var(--adm-text-3)" }}
               >
                 <span
                   className="material-symbols-outlined"
-                  style={{ fontSize: 13, color: "#A1A1AA" }}
+                  style={{ fontSize: 13, color: "var(--adm-text-3)" }}
                 >
                   person
                 </span>
-                المستخدم *
+                {t("managers.fieldUser")}
               </label>
               <div className="relative">
                 <select
@@ -622,22 +622,22 @@ export default function AdminManagers() {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, userId: e.target.value }))
                   }
-                  className="w-full h-10 pr-3.5 pl-8 rounded-xl text-[13px] font-medium outline-none appearance-none transition-all cursor-pointer"
+                  className="w-full h-10 ps-3.5 pe-8 rounded-xl text-[13px] font-medium outline-none appearance-none transition-all cursor-pointer"
                   style={{
-                    background: "#F4F4F5",
-                    border: "1px solid #E4E4E7",
-                    color: form.userId ? "#18181B" : "#A1A1AA",
+                    background: "var(--adm-bg)",
+                    border: "1px solid var(--adm-border)",
+                    color: form.userId ? "var(--adm-text-1)" : "var(--adm-text-3)",
                   }}
                   onFocus={(e) => {
-                    e.currentTarget.style.border = "1px solid #18181B";
-                    e.currentTarget.style.background = "#fff";
+                    e.currentTarget.style.border = "1px solid var(--adm-accent)";
+                    e.currentTarget.style.background = "var(--adm-surface)";
                   }}
                   onBlur={(e) => {
-                    e.currentTarget.style.border = "1px solid #E4E4E7";
-                    e.currentTarget.style.background = "#F4F4F5";
+                    e.currentTarget.style.border = "1px solid var(--adm-border)";
+                    e.currentTarget.style.background = "var(--adm-bg)";
                   }}
                 >
-                  <option value="">-- اختر مستخدم --</option>
+                  <option value="">{t("managers.pickUser")}</option>
                   {availableUsers.map((u: any) => (
                     <option key={u.id} value={u.id}>
                       {u.name ?? u.username} ({u.username})
@@ -645,8 +645,8 @@ export default function AdminManagers() {
                   ))}
                 </select>
                 <span
-                  className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                  style={{ fontSize: 14, color: "#A1A1AA" }}
+                  className="material-symbols-outlined absolute end-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ fontSize: 14, color: "var(--adm-text-3)" }}
                 >
                   expand_more
                 </span>
@@ -654,7 +654,7 @@ export default function AdminManagers() {
               {availableUsers.length === 0 && (
                 <p
                   className="text-[11px] mt-1.5 flex items-center gap-1 px-3 py-2 rounded-xl"
-                  style={{ background: "#FEF9C3", color: "#A16207" }}
+                  style={{ background: "var(--adm-amber-soft)", color: "var(--adm-amber)" }}
                 >
                   <span
                     className="material-symbols-outlined"
@@ -662,7 +662,7 @@ export default function AdminManagers() {
                   >
                     warning
                   </span>
-                  جميع المستخدمين لديهم بروفايل مدير
+                  {t("managers.allUsersHaveProfiles")}
                 </p>
               )}
             </div>
@@ -671,24 +671,24 @@ export default function AdminManagers() {
             <div>
               <label
                 className="flex items-center gap-1.5 text-[11px] font-bold tracking-widest uppercase mb-2"
-                style={{ color: "#A1A1AA" }}
+                style={{ color: "var(--adm-text-3)" }}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: 12, color: "#A1A1AA" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 12, color: "var(--adm-text-3)" }}>
                   photo_camera
                 </span>
-                صورة المدير (اختياري)
+                {t("managers.fieldPhoto")}
               </label>
               <label
                 className="flex items-center gap-3 cursor-pointer"
                 style={{
-                  background: "#F4F4F5",
-                  border: "1px dashed #D4D4D8",
+                  background: "var(--adm-bg)",
+                  border: "1px dashed var(--adm-text-3)",
                   borderRadius: 12,
                   padding: "10px 14px",
                   transition: "border-color .15s",
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#18181B")}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#D4D4D8")}
+                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--adm-accent)")}
+                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--adm-text-3)")}
               >
                 <input
                   type="file"
@@ -701,25 +701,25 @@ export default function AdminManagers() {
                     <img
                       src={photoFile.preview}
                       alt="preview"
-                      style={{ width: 44, height: 44, borderRadius: 22, objectFit: "cover", flexShrink: 0, border: "2px solid #E4E4E7" }}
+                      style={{ width: 44, height: 44, borderRadius: 22, objectFit: "cover", flexShrink: 0, border: "2px solid var(--adm-border)" }}
                     />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[12px] font-bold" style={{ color: "#18181B" }}>تم اختيار الصورة ✓</p>
-                      <p className="text-[11px]" style={{ color: "#A1A1AA" }}>اضغط لتغييرها</p>
+                      <p className="text-[12px] font-bold" style={{ color: "var(--adm-text-1)" }}>{t("managers.photoSelected")}</p>
+                      <p className="text-[11px]" style={{ color: "var(--adm-text-3)" }}>{t("managers.tapToChange")}</p>
                     </div>
                   </>
                 ) : (
                   <>
                     <div
-                      style={{ width: 44, height: 44, borderRadius: 22, background: "#E4E4E7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                      style={{ width: 44, height: 44, borderRadius: 22, background: "var(--adm-border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: 20, color: "#A1A1AA", fontVariationSettings: "'FILL' 1" }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 20, color: "var(--adm-text-3)", fontVariationSettings: "'FILL' 1" }}>
                         add_a_photo
                       </span>
                     </div>
                     <div>
-                      <p className="text-[12px] font-semibold" style={{ color: "#71717A" }}>اضغط لرفع صورة</p>
-                      <p className="text-[11px]" style={{ color: "#A1A1AA" }}>JPG أو PNG — حد أقصى 5 ميجا</p>
+                      <p className="text-[12px] font-semibold" style={{ color: "var(--adm-text-2)" }}>{t("managers.tapToUpload")}</p>
+                      <p className="text-[11px]" style={{ color: "var(--adm-text-3)" }}>{t("managers.photoHint")}</p>
                     </div>
                   </>
                 )}
@@ -731,13 +731,13 @@ export default function AdminManagers() {
               {[
                 {
                   key: "employeeCode",
-                  label: "كود الموظف",
+                  label: t("managers.fieldEmployeeCode"),
                   placeholder: "MGR-001",
                   icon: "badge",
                 },
                 {
                   key: "phone",
-                  label: "رقم الهاتف",
+                  label: t("managers.fieldPhone"),
                   placeholder: "01xxxxxxxxx",
                   icon: "phone",
                 },
@@ -745,11 +745,11 @@ export default function AdminManagers() {
                 <div key={key}>
                   <label
                     className="flex items-center gap-1.5 text-[11px] font-bold tracking-widest uppercase mb-2"
-                    style={{ color: "#A1A1AA" }}
+                    style={{ color: "var(--adm-text-3)" }}
                   >
                     <span
                       className="material-symbols-outlined"
-                      style={{ fontSize: 12, color: "#A1A1AA" }}
+                      style={{ fontSize: 12, color: "var(--adm-text-3)" }}
                     >
                       {icon}
                     </span>
@@ -764,17 +764,17 @@ export default function AdminManagers() {
                     }
                     className="w-full h-10 px-3.5 rounded-xl text-[13px] font-medium outline-none transition-all"
                     style={{
-                      background: "#F4F4F5",
-                      border: "1px solid #E4E4E7",
-                      color: "#18181B",
+                      background: "var(--adm-bg)",
+                      border: "1px solid var(--adm-border)",
+                      color: "var(--adm-text-1)",
                     }}
                     onFocus={(e) => {
-                      e.currentTarget.style.border = "1px solid #18181B";
-                      e.currentTarget.style.background = "#fff";
+                      e.currentTarget.style.border = "1px solid var(--adm-accent)";
+                      e.currentTarget.style.background = "var(--adm-surface)";
                     }}
                     onBlur={(e) => {
-                      e.currentTarget.style.border = "1px solid #E4E4E7";
-                      e.currentTarget.style.background = "#F4F4F5";
+                      e.currentTarget.style.border = "1px solid var(--adm-border)";
+                      e.currentTarget.style.background = "var(--adm-bg)";
                     }}
                   />
                 </div>
@@ -784,25 +784,25 @@ export default function AdminManagers() {
 
           <DialogFooter
             className="px-6 py-4 flex items-center justify-end gap-2"
-            style={{ borderTop: "1px solid #F4F4F5" }}
+            style={{ borderTop: "1px solid var(--adm-bg)" }}
           >
             <button
               onClick={() => setCreateOpen(false)}
-              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
-              style={{ color: "#71717A" }}
+              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
+              style={{ color: "var(--adm-text-2)" }}
             >
-              إلغاء
+              {t("common.cancel")}
             </button>
             <button
               onClick={handleCreateSave}
               disabled={createMutation.isPending}
-              className="h-9 px-5 rounded-xl text-[13px] font-bold text-white flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
-              style={{ background: "#18181B" }}
+              className="h-9 px-5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
+              style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}
             >
               {createMutation.isPending && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               )}
-              إضافة
+              {t("common.add")}
             </button>
           </DialogFooter>
         </DialogContent>
@@ -833,20 +833,20 @@ export default function AdminManagers() {
       >
         <DialogContent
           className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
-          style={{ background: "#fff", border: "1px solid #E4E4E7" }}
+          style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
             className="px-6 py-4"
-            style={{ borderBottom: "1px solid #F4F4F5" }}
+            style={{ borderBottom: "1px solid var(--adm-bg)" }}
           >
             <div className="flex items-center gap-3">
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center"
-                style={{ background: "#18181B" }}
+                style={{ background: "var(--adm-accent)" }}
               >
                 <span
-                  className="material-symbols-outlined text-white"
-                  style={{ fontSize: 16, fontVariationSettings: "'FILL' 1" }}
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 16, color: "var(--adm-accent-fg)", fontVariationSettings: "'FILL' 1" }}
                 >
                   photo_camera
                 </span>
@@ -854,11 +854,11 @@ export default function AdminManagers() {
               <div>
                 <DialogTitle
                   className="text-[15px] font-bold leading-none"
-                  style={{ color: "#18181B" }}
+                  style={{ color: "var(--adm-text-1)" }}
                 >
-                  تحديث صورة المدير
+                  {t("managers.updatePhotoTitle")}
                 </DialogTitle>
-                <p className="text-[12px] mt-0.5" style={{ color: "#71717A" }}>
+                <p className="text-[12px] mt-0.5" style={{ color: "var(--adm-text-2)" }}>
                   {editPhotoManager?.userName ?? ""}
                 </p>
               </div>
@@ -869,14 +869,14 @@ export default function AdminManagers() {
             <label
               className="flex items-center gap-3 cursor-pointer"
               style={{
-                background: "#F4F4F5",
-                border: "1px dashed #D4D4D8",
+                background: "var(--adm-bg)",
+                border: "1px dashed var(--adm-text-3)",
                 borderRadius: 12,
                 padding: "10px 14px",
                 transition: "border-color .15s",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#18181B")}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#D4D4D8")}
+              onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--adm-accent)")}
+              onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--adm-text-3)")}
             >
               <input
                 type="file"
@@ -886,14 +886,14 @@ export default function AdminManagers() {
                   const file = e.target.files?.[0];
                   if (!file) return;
                   if (file.size > 15 * 1024 * 1024) {
-                    toast.error("الصورة أكبر من 15 ميجا");
+                    toast.error(t("managers.toastPhotoTooLarge"));
                     return;
                   }
                   try {
                     const { base64, extension } = await compressImageFile(file);
                     setUpdatePhotoFile({ base64, ext: extension, preview: base64 });
                   } catch (err: any) {
-                    toast.error(`فشل معالجة الصورة: ${err.message || String(err)}`);
+                    toast.error(t("managers.toastPhotoProcessFailed", { msg: err.message || String(err) }));
                   }
                 }}
               />
@@ -902,11 +902,11 @@ export default function AdminManagers() {
                   <img
                     src={updatePhotoFile.preview}
                     alt="preview"
-                    style={{ width: 44, height: 44, borderRadius: 22, objectFit: "cover", flexShrink: 0, border: "2px solid #E4E4E7" }}
+                    style={{ width: 44, height: 44, borderRadius: 22, objectFit: "cover", flexShrink: 0, border: "2px solid var(--adm-border)" }}
                   />
                   <div className="flex-1 min-w-0">
-                    <p className="text-[12px] font-bold" style={{ color: "#18181B" }}>تم اختيار الصورة ✓</p>
-                    <p className="text-[11px]" style={{ color: "#A1A1AA" }}>اضغط لتغييرها</p>
+                    <p className="text-[12px] font-bold" style={{ color: "var(--adm-text-1)" }}>{t("managers.photoSelected")}</p>
+                    <p className="text-[11px]" style={{ color: "var(--adm-text-3)" }}>{t("managers.tapToChange")}</p>
                   </div>
                 </>
               ) : (
@@ -915,22 +915,22 @@ export default function AdminManagers() {
                     <img
                       src={editPhotoManager.photoUrl}
                       alt="current"
-                      style={{ width: 44, height: 44, borderRadius: 22, objectFit: "cover", flexShrink: 0, border: "2px solid #E4E4E7" }}
+                      style={{ width: 44, height: 44, borderRadius: 22, objectFit: "cover", flexShrink: 0, border: "2px solid var(--adm-border)" }}
                     />
                   ) : (
                     <div
-                      style={{ width: 44, height: 44, borderRadius: 22, background: "#E4E4E7", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+                      style={{ width: 44, height: 44, borderRadius: 22, background: "var(--adm-border)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: 20, color: "#A1A1AA", fontVariationSettings: "'FILL' 1" }}>
+                      <span className="material-symbols-outlined" style={{ fontSize: 20, color: "var(--adm-text-3)", fontVariationSettings: "'FILL' 1" }}>
                         add_a_photo
                       </span>
                     </div>
                   )}
                   <div>
-                    <p className="text-[12px] font-semibold" style={{ color: "#71717A" }}>
-                      {editPhotoManager?.photoUrl ? "تغيير الصورة الحالية" : "اضغط لرفع صورة"}
+                    <p className="text-[12px] font-semibold" style={{ color: "var(--adm-text-2)" }}>
+                      {editPhotoManager?.photoUrl ? t("managers.changeCurrentPhoto") : t("managers.tapToUpload")}
                     </p>
-                    <p className="text-[11px]" style={{ color: "#A1A1AA" }}>JPG أو PNG — حد أقصى 5 ميجا</p>
+                    <p className="text-[11px]" style={{ color: "var(--adm-text-3)" }}>{t("managers.photoHint")}</p>
                   </div>
                 </>
               )}
@@ -939,17 +939,17 @@ export default function AdminManagers() {
 
           <DialogFooter
             className="px-6 py-4 flex items-center justify-end gap-2"
-            style={{ borderTop: "1px solid #F4F4F5" }}
+            style={{ borderTop: "1px solid var(--adm-bg)" }}
           >
             <button
               onClick={() => {
                 setEditPhotoManager(null);
                 setUpdatePhotoFile(null);
               }}
-              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[#F4F4F5] cursor-pointer"
-              style={{ color: "#71717A" }}
+              className="h-9 px-4 rounded-xl text-[13px] font-semibold transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
+              style={{ color: "var(--adm-text-2)" }}
             >
-              إلغاء
+              {t("common.cancel")}
             </button>
             <button
               onClick={async () => {
@@ -960,7 +960,7 @@ export default function AdminManagers() {
                     base64: updatePhotoFile.base64,
                     extension: updatePhotoFile.ext,
                   });
-                  toast.success("تم تحديث صورة المدير بنجاح");
+                  toast.success(t("managers.toastPhotoUpdated"));
                   refetch();
                   setEditPhotoManager(null);
                   setUpdatePhotoFile(null);
@@ -969,13 +969,13 @@ export default function AdminManagers() {
                 }
               }}
               disabled={uploadPhotoMutation.isPending || !updatePhotoFile}
-              className="h-9 px-5 rounded-xl text-[13px] font-bold text-white flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
-              style={{ background: "#18181B" }}
+              className="h-9 px-5 rounded-xl text-[13px] font-bold flex items-center gap-2 transition-opacity hover:opacity-90 cursor-pointer disabled:opacity-50"
+              style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}
             >
               {uploadPhotoMutation.isPending && (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               )}
-              حفظ الصورة
+              {t("managers.savePhoto")}
             </button>
           </DialogFooter>
         </DialogContent>

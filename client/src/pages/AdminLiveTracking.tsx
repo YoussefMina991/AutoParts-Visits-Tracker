@@ -4,8 +4,11 @@ import { useState, useEffect } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ar } from "date-fns/locale";
 import type { MapCenter } from "@/components/Map";
+import { useLang } from "@/lib/i18n";
 
 export default function AdminLiveTracking() {
+  const { t, lang } = useLang();
+  const locale = lang === "ar" ? ar : undefined;
   const [mode, setMode]             = useState<"live" | "history">("live");
   const [historyDate, setHistoryDate] = useState(new Date().toLocaleDateString("en-CA"));
   const [selectedManager, setSelectedManager] = useState<number | null>(null);
@@ -38,15 +41,15 @@ export default function AdminLiveTracking() {
     fontWeight: 700,
     cursor: "pointer",
     transition: "all .15s",
-    background: active ? "#18181B" : "transparent",
-    color: active ? "#fff" : "#71717A",
+    background: active ? "var(--adm-accent)" : "transparent",
+    color: active ? "var(--adm-accent-fg)" : "var(--adm-text-2)",
     border: "none",
   });
 
   if (isLoading)
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="animate-spin w-6 h-6 border-2 border-[#E4E4E7] border-t-[#18181B] rounded-full" />
+        <div className="animate-spin w-6 h-6 border-2 border-[var(--adm-border)] border-t-[var(--adm-text-1)] rounded-full" />
       </div>
     );
 
@@ -55,12 +58,12 @@ export default function AdminLiveTracking() {
       {/* Header */}
       <div
         className="flex items-center justify-between px-5 py-4 shrink-0"
-        style={{ borderBottom: "1px solid #F4F4F5" }}
+        style={{ borderBottom: "1px solid var(--adm-bg)" }}
       >
         <div>
-          <h1 className="text-[20px] font-bold text-[#18181B]">Live Tracking</h1>
-          <p className="text-[12px] text-[#A1A1AA] mt-0.5 font-medium">
-            {withLoc.length} active · {withoutLoc.length} offline
+          <h1 className="text-[20px] font-bold text-[var(--adm-text-1)]">{t("live.title")}</h1>
+          <p className="text-[12px] text-[var(--adm-text-3)] mt-0.5 font-medium">
+            {t("live.activeOffline", { a: withLoc.length, b: withoutLoc.length })}
           </p>
         </div>
 
@@ -68,10 +71,10 @@ export default function AdminLiveTracking() {
           {/* Mode toggle */}
           <div
             className="flex items-center p-1"
-            style={{ background: "#F4F4F5", borderRadius: 12 }}
+            style={{ background: "var(--adm-bg)", borderRadius: 12 }}
           >
-            <button style={chip(mode === "live")} onClick={() => setMode("live")}>Live</button>
-            <button style={chip(mode === "history")} onClick={() => setMode("history")}>History</button>
+            <button style={chip(mode === "live")} onClick={() => setMode("live")}>{t("live.modeLive")}</button>
+            <button style={chip(mode === "history")} onClick={() => setMode("history")}>{t("live.modeHistory")}</button>
           </div>
 
           {mode === "history" && (
@@ -79,10 +82,10 @@ export default function AdminLiveTracking() {
               type="date"
               value={historyDate}
               onChange={(e) => setHistoryDate(e.target.value)}
-              className="h-8 px-3 text-[12px] font-medium text-[#18181B] outline-none transition-colors"
+              className="h-8 px-3 text-[12px] font-medium text-[var(--adm-text-1)] outline-none transition-colors"
               style={{
-                background: "#fff",
-                border: "1px solid #E4E4E7",
+                background: "var(--adm-surface)",
+                border: "1px solid var(--adm-border)",
                 borderRadius: 10,
               }}
             />
@@ -92,16 +95,16 @@ export default function AdminLiveTracking() {
             <div
               className="flex items-center gap-1.5 px-3 py-1.5"
               style={{
-                background: "#F0FDF4",
-                border: "1px solid #BBF7D0",
+                background: "var(--adm-green-soft)",
+                border: "1px solid var(--adm-green-soft-border)",
                 borderRadius: 10,
               }}
             >
               <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#22C55E] opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#22C55E]" />
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--adm-online)] opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--adm-online)]" />
               </span>
-              <span className="text-[11px] font-bold text-[#16A34A]">LIVE · 10s</span>
+              <span className="text-[11px] font-bold text-[var(--adm-green)]">{t("live.badge")}</span>
             </div>
           )}
         </div>
@@ -114,7 +117,7 @@ export default function AdminLiveTracking() {
           {/* Map */}
           <div
             className="lg:col-span-3 overflow-hidden relative"
-            style={{ borderRadius: 16, border: "1px solid #E4E4E7", minHeight: 480 }}
+            style={{ borderRadius: 16, border: "1px solid var(--adm-border)", minHeight: 480 }}
           >
             <MapView
               initialZoom={6}
@@ -129,11 +132,11 @@ export default function AdminLiveTracking() {
                       key={m.id}
                       lat={parseFloat(m.location!.latitude)}
                       lng={parseFloat(m.location!.longitude)}
-                      label={m.userName || "Manager"}
+                      label={m.userName || t("live.unnamedManager")}
                       color={selectedManager === m.id ? "#18181B" : "#22C55E"}
                       popupContent={`${m.userName} — ${formatDistanceToNow(
                         new Date(m.location!.timestamp),
-                        { addSuffix: true, locale: ar }
+                        { addSuffix: true, locale }
                       )}`}
                       onClick={() => {
                         setSelectedManager(m.id);
@@ -157,18 +160,18 @@ export default function AdminLiveTracking() {
 
             {/* Empty overlays */}
             {mode === "live" && withLoc.length === 0 && (
-              <Overlay icon="location_off" title="No active locations" sub="Waiting for managers to open the app" />
+              <Overlay icon="location_off" title={t("live.noActiveLocations")} sub={t("live.waitingForManagers")} />
             )}
             {mode === "history" && !selectedManager && (
-              <Overlay icon="touch_app" title="Select a manager" sub="Choose from the list to view their route" />
+              <Overlay icon="touch_app" title={t("live.selectManager")} sub={t("live.chooseFromList")} />
             )}
             {mode === "history" && selectedManager && historyLoading && (
-              <div className="absolute inset-0 z-[400] flex items-center justify-center bg-white/80 backdrop-blur-sm">
-                <div className="animate-spin w-7 h-7 border-2 border-[#E4E4E7] border-t-[#18181B] rounded-full" />
+              <div className="absolute inset-0 z-[400] flex items-center justify-center bg-[var(--adm-surface)]/80 backdrop-blur-sm">
+                <div className="animate-spin w-7 h-7 border-2 border-[var(--adm-border)] border-t-[var(--adm-text-1)] rounded-full" />
               </div>
             )}
             {mode === "history" && selectedManager && !historyLoading && routeHistory.length === 0 && (
-              <Overlay icon="wrong_location" title="No route recorded" sub="This manager had no activity on this day" />
+              <Overlay icon="wrong_location" title={t("live.noRoute")} sub={t("live.noRouteSub")} />
             )}
           </div>
 
@@ -176,19 +179,19 @@ export default function AdminLiveTracking() {
           <div
             className="flex flex-col overflow-hidden"
             style={{
-              background: "#fff",
-              border: "1px solid #E4E4E7",
+              background: "var(--adm-surface)",
+              border: "1px solid var(--adm-border)",
               borderRadius: 16,
             }}
           >
             <div
               className="flex items-center justify-between px-4 py-3 shrink-0"
-              style={{ borderBottom: "1px solid #F4F4F5" }}
+              style={{ borderBottom: "1px solid var(--adm-bg)" }}
             >
-              <p className="text-[13px] font-bold text-[#18181B]">Managers</p>
+              <p className="text-[13px] font-bold text-[var(--adm-text-1)]">{t("live.managers")}</p>
               <span
                 className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                style={{ background: "#F4F4F5", color: "#71717A" }}
+                style={{ background: "var(--adm-bg)", color: "var(--adm-text-2)" }}
               >
                 {managers.length}
               </span>
@@ -196,7 +199,7 @@ export default function AdminLiveTracking() {
 
             <div className="flex-1 overflow-y-auto p-2" style={{ scrollbarWidth: "none" }}>
               {managers.length === 0 ? (
-                <p className="text-[11px] text-[#A1A1AA] text-center py-10">No managers found</p>
+                <p className="text-[11px] text-[var(--adm-text-3)] text-center py-10">{t("live.noManagers")}</p>
               ) : (
                 managers.map((m) => {
                   const hasLoc   = m.location !== null;
@@ -216,8 +219,8 @@ export default function AdminLiveTracking() {
                       style={{
                         cursor: hasLoc ? "pointer" : "default",
                         opacity: hasLoc ? 1 : 0.5,
-                        background: selected ? "#F4F4F5" : "transparent",
-                        border: `1px solid ${selected ? "#E4E4E7" : "transparent"}`,
+                        background: selected ? "var(--adm-bg)" : "transparent",
+                        border: `1px solid ${selected ? "var(--adm-border)" : "transparent"}`,
                         borderRadius: 12,
                       }}
                     >
@@ -225,21 +228,21 @@ export default function AdminLiveTracking() {
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{
-                            background: hasLoc ? "#22C55E" : "#A1A1AA",
-                            boxShadow: hasLoc ? "0 0 5px #22C55E99" : "none",
+                            background: hasLoc ? "var(--adm-online)" : "var(--adm-text-3)",
+                            boxShadow: hasLoc ? "0 0 5px rgba(34,197,94,0.6)" : "none",
                           }}
                         />
-                        <span className="text-[12px] font-bold text-[#18181B] truncate">
-                          {m.userName || "Manager"}
+                        <span className="text-[12px] font-bold text-[var(--adm-text-1)] truncate">
+                          {m.userName || t("live.unnamedManager")}
                         </span>
                       </div>
-                      <p className="text-[10px] text-[#A1A1AA] pl-3.5">
+                      <p className="text-[10px] text-[var(--adm-text-3)] ps-3.5">
                         {hasLoc
                           ? formatDistanceToNow(new Date(m.location!.timestamp), {
                               addSuffix: true,
-                              locale: ar,
+                              locale,
                             })
-                          : "No location data"}
+                          : t("live.noLocationData")}
                       </p>
                     </div>
                   );
@@ -249,10 +252,10 @@ export default function AdminLiveTracking() {
 
             <div
               className="px-4 py-3 shrink-0"
-              style={{ borderTop: "1px solid #F4F4F5" }}
+              style={{ borderTop: "1px solid var(--adm-bg)" }}
             >
-              <p className="text-[10px] text-[#A1A1AA] leading-4">
-                Location shown is the last known position, not necessarily real-time.
+              <p className="text-[10px] text-[var(--adm-text-3)] leading-4">
+                {t("live.disclaimer")}
               </p>
             </div>
           </div>
@@ -265,15 +268,15 @@ export default function AdminLiveTracking() {
 // ─── Overlay helper ───────────────────────────────────────────────────────────
 function Overlay({ icon, title, sub }: { icon: string; title: string; sub: string }) {
   return (
-    <div className="absolute inset-0 z-[400] flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm">
+    <div className="absolute inset-0 z-[400] flex flex-col items-center justify-center bg-[var(--adm-surface)]/80 backdrop-blur-sm">
       <span
-        className="material-symbols-outlined text-[#D4D4D8] mb-3"
+        className="material-symbols-outlined text-[var(--adm-border)] mb-3"
         style={{ fontSize: 44, fontVariationSettings: "'FILL' 1" }}
       >
         {icon}
       </span>
-      <p className="text-[13px] font-bold text-[#71717A]">{title}</p>
-      <p className="text-[11px] text-[#A1A1AA] mt-1">{sub}</p>
+      <p className="text-[13px] font-bold text-[var(--adm-text-2)]">{title}</p>
+      <p className="text-[11px] text-[var(--adm-text-3)] mt-1">{sub}</p>
     </div>
   );
 }

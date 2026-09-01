@@ -1,9 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Loader2, ChevronDown, ChevronUp, Download, Clock, Camera, CheckCircle2 } from "lucide-react";
+import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { format, startOfMonth, endOfMonth, isToday } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
+import { useLang, type TFunc } from "@/lib/i18n";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Visit {
@@ -37,25 +39,27 @@ interface DayGroup {
   totalDistanceKm: number;
 }
 
+type Locale = typeof ar | undefined;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function durationMin(checkIn: Date | string, checkOut: Date | string | null): number {
   if (!checkOut) return 0;
   return Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 60000);
 }
-function fmtDuration(min: number): string {
+function fmtDuration(min: number, hUnit: string, mUnit: string): string {
   if (min === 0) return "—";
   const h = Math.floor(min / 60);
   const m = min % 60;
-  return h > 0 ? `${h}س ${m}د` : `${m}د`;
+  return h > 0 ? `${h}${hUnit} ${m}${mUnit}` : `${m}${mUnit}`;
 }
-function fmtTime(dt: Date | string): string {
-  return format(new Date(dt), "hh:mm a", { locale: ar });
+function fmtTime(dt: Date | string, locale: Locale): string {
+  return format(new Date(dt), "hh:mm a", { locale });
 }
 function fmtDate(dt: Date | string): string {
   return format(new Date(dt), "yyyy-MM-dd");
 }
-function fmtDateLabel(dateStr: string): string {
-  return format(new Date(dateStr), "EEEE، d MMMM yyyy", { locale: ar });
+function fmtDateLabel(dateStr: string, locale: Locale): string {
+  return format(new Date(dateStr), "EEEE، d MMMM yyyy", { locale });
 }
 
 function parseMockReasons(reasonsStr: string | null): string[] {
@@ -67,21 +71,21 @@ function parseMockReasons(reasonsStr: string | null): string[] {
   }
 }
 
-function translateReason(r: string): string {
-  if (r.startsWith("TELEPORTATION")) return "انتقال غير منطقي (مسافة/وقت مستحيل)";
-  if (r.startsWith("SHORT_VISIT")) return "زيارة قصيرة جداً (أقل من الحد الأدنى)";
-  if (r === "ANDROID_IS_MOCK_API") return "استخدام تطبيق Fake GPS (مكشوف)";
-  if (r === "DEVELOPER_OPTIONS_ENABLED") return "وضع المطور مفعل";
-  if (r === "MOCK_APP_INSTALLED") return "تطبيق تزييف موقع مثبت بالجهاز";
-  if (r === "ACCURACY_ZERO" || r.startsWith("ACCURACY_TINY_INTEGER")) return "دقة إحداثيات مشبوهة (GPS معدل)";
-  if (r.startsWith("SUSPICIOUS_PROVIDER")) return "مزود موقع مشبوه";
-  if (r === "DIST_HAVERSINE_ESTIMATE") return "حساب مسافة تقديري (خط مستقيم)";
-  if (r === "SENSOR_STATIONARY_WHILE_GPS_MOVING") return "حساس الحركة ساكن بينما يتغير الموقع";
-  if (r === "SUSPICIOUS_LOCATION_EXTRAS") return "بيانات موقع مشبوهة (Extras)";
+function translateReason(r: string, t: TFunc): string {
+  if (r.startsWith("TELEPORTATION")) return t("reason.teleportation");
+  if (r.startsWith("SHORT_VISIT")) return t("reason.shortVisit");
+  if (r === "ANDROID_IS_MOCK_API") return t("reason.fakeGps");
+  if (r === "DEVELOPER_OPTIONS_ENABLED") return t("reason.devOptions");
+  if (r === "MOCK_APP_INSTALLED") return t("reason.mockApp");
+  if (r === "ACCURACY_ZERO" || r.startsWith("ACCURACY_TINY_INTEGER")) return t("reason.accuracy");
+  if (r.startsWith("SUSPICIOUS_PROVIDER")) return t("reason.provider");
+  if (r === "DIST_HAVERSINE_ESTIMATE") return t("reason.distEstimate");
+  if (r === "SENSOR_STATIONARY_WHILE_GPS_MOVING") return t("reason.sensor");
+  if (r === "SUSPICIOUS_LOCATION_EXTRAS") return t("reason.extras");
   return r; // Fallback
 }
 
-function groupVisits(visits: Visit[]): DayGroup[] {
+function groupVisits(visits: Visit[], locale: Locale): DayGroup[] {
   const map = new Map<string, Visit[]>();
   for (const v of visits) {
     const key = `${v.managerEmail ?? v.managerName}__${fmtDate(v.checkInAt)}`;
@@ -99,7 +103,7 @@ function groupVisits(visits: Visit[]): DayGroup[] {
     const dateStr = fmtDate(firstVisit.checkInAt);
     groups.push({
       date: dateStr,
-      dateLabel: fmtDateLabel(dateStr),
+      dateLabel: fmtDateLabel(dateStr, locale),
       managerName: firstVisit.managerName,
       managerEmail: firstVisit.managerEmail,
       visits: sorted,
@@ -114,18 +118,27 @@ function groupVisits(visits: Visit[]): DayGroup[] {
 }
 
 // ─── Excel Export ─────────────────────────────────────────────────────────────
-function exportToExcel(visits: Visit[], managerNameFilter: string, startDate: string, endDate: string) {
+function exportToExcel(
+  visits: Visit[],
+  managerNameFilter: string,
+  startDate: string,
+  endDate: string,
+  t: TFunc,
+  locale: Locale,
+  hUnit: string,
+  mUnit: string
+) {
   const wb = XLSX.utils.book_new();
-  const exportDate = format(new Date(), "yyyy-MM-dd HH:mm a", { locale: ar });
+  const exportDate = format(new Date(), "yyyy-MM-dd HH:mm a", { locale });
 
   const detailRows: any[][] = [
-    ["نظام تتبع زيارات الفروع — سجل الزيارات الشامل"], [],
-    ["معلومات التقرير:"],
-    ["تاريخ الاستخراج", exportDate],
-    ["الفترة", `من ${startDate || "البداية"} إلى ${endDate || "النهاية"}`],
-    ["Manager", managerNameFilter || "كل Managerين"],
-    ["Total Visits", visits.length], [],
-    ["التاريخ", "اليوم", "اسم Manager", "الفرع", "كود الفرع", "وقت الدخول", "وقت الخروج", "المدة", "الحالة", "المسافة (كم)", "موقع وهمي؟", "ملاحظات"],
+    [t("export.systemTitle")], [],
+    [t("export.reportInfo")],
+    [t("export.extractDate"), exportDate],
+    [t("export.period"), `${t("export.from")} ${startDate || "—"} ${t("export.to")} ${endDate || "—"}`],
+    [t("export.thManager"), managerNameFilter || t("export.allManagers")],
+    [t("export.totalVisits"), visits.length], [],
+    [t("export.thDate"), t("export.thDay"), t("export.thManager"), t("export.thBranch"), t("export.thBranchCode"), t("export.thCheckin"), t("export.thCheckout"), t("export.thDuration"), t("export.thStatus"), t("export.thDistance"), t("export.thMocked"), t("export.thNotes")],
   ];
 
   const sorted = [...visits].sort((a, b) => new Date(a.checkInAt).getTime() - new Date(b.checkInAt).getTime());
@@ -137,93 +150,97 @@ function exportToExcel(visits: Visit[], managerNameFilter: string, startDate: st
     currentDate = vDate;
     detailRows.push([
       vDate,
-      format(new Date(v.checkInAt), "EEEE", { locale: ar }),
+      format(new Date(v.checkInAt), "EEEE", { locale }),
       v.managerName, v.branchName, v.branchCode,
       format(new Date(v.checkInAt), "hh:mm a"),
-      v.checkOutAt ? format(new Date(v.checkOutAt), "hh:mm a") : "لم يغادر",
-      v.checkOutAt ? fmtDuration(dur) : "—",
-      v.status === "checked_in" ? "متواجد حالياً" : "انتهت الزيارة",
-      v.distanceToPrevBranchKm != null ? `${v.distanceToPrevBranchKm} كم` : "—",
-      v.isMocked === "yes" ? "⚠️ نعم" : "لا",
+      v.checkOutAt ? format(new Date(v.checkOutAt), "hh:mm a") : t("export.notLeft"),
+      v.checkOutAt ? fmtDuration(dur, hUnit, mUnit) : "—",
+      v.status === "checked_in" ? t("export.statusPresent") : t("export.statusEnded"),
+      v.distanceToPrevBranchKm != null ? `${v.distanceToPrevBranchKm} ${t("reports.km")}` : "—",
+      v.isMocked === "yes" ? t("export.yes") : t("export.no"),
       v.notes ?? "—",
     ]);
   });
 
   const ws1 = XLSX.utils.aoa_to_sheet(detailRows);
   ws1["!cols"] = [{ wch: 14 }, { wch: 12 }, { wch: 25 }, { wch: 30 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 35 }];
-  XLSX.utils.book_append_sheet(wb, ws1, "سجل الزيارات");
+  XLSX.utils.book_append_sheet(wb, ws1, t("export.sheetLog"));
 
-  const groups = groupVisits(visits);
+  const groups = groupVisits(visits, locale);
   const summaryRows: any[][] = [
-    ["نظام تتبع زيارات الفروع — ملخص Work Days"], [],
-    ["التاريخ", "اليوم", "اسم Manager", "Total Visits", "أول فرع", "وقت البداية", "آخر فرع", "وقت النهاية", "إجمالي وقت التواجد", "Total Distance"],
+    [t("export.summaryTitle")], [],
+    [t("export.thDate"), t("export.thDay"), t("export.thManager"), t("export.totalVisits"), t("export.thFirstBranch"), t("export.thStartTime"), t("export.thLastBranch"), t("export.thEndTime"), t("export.thTotalPresence"), t("reports.totalDistance")],
   ];
   groups.forEach((g) => {
     summaryRows.push([
       g.date, g.dateLabel.split("،")[0], g.managerName, g.visits.length,
-      g.firstVisit.branchName, fmtTime(g.firstVisit.checkInAt),
+      g.firstVisit.branchName, fmtTime(g.firstVisit.checkInAt, locale),
       g.lastVisit.branchName,
-      g.lastVisit.checkOutAt ? fmtTime(g.lastVisit.checkOutAt) : "لم ينهِ",
-      fmtDuration(g.totalDurationMin),
-      g.totalDistanceKm > 0 ? `${g.totalDistanceKm} كم` : "—",
+      g.lastVisit.checkOutAt ? fmtTime(g.lastVisit.checkOutAt, locale) : t("export.notFinished"),
+      fmtDuration(g.totalDurationMin, hUnit, mUnit),
+      g.totalDistanceKm > 0 ? `${g.totalDistanceKm} ${t("reports.km")}` : "—",
     ]);
   });
   const ws2 = XLSX.utils.aoa_to_sheet(summaryRows);
   ws2["!cols"] = [{ wch: 14 }, { wch: 10 }, { wch: 25 }, { wch: 15 }, { wch: 25 }, { wch: 12 }, { wch: 25 }, { wch: 12 }, { wch: 18 }, { wch: 15 }];
-  XLSX.utils.book_append_sheet(wb, ws2, "ملخص الأيام");
+  XLSX.utils.book_append_sheet(wb, ws2, t("export.sheetDays"));
 
-  XLSX.writeFile(wb, `تقرير_زيارات_${startDate}_الى_${endDate}.xlsx`);
+  XLSX.writeFile(wb, `${t("export.filePrefix")}_${startDate}_${t("export.fileTo")}_${endDate}.xlsx`);
 }
 
 // ─── Day Card ─────────────────────────────────────────────────────────────────
 function DayCard({ group }: { group: DayGroup }) {
+  const { t, lang } = useLang();
+  const locale: Locale = lang === "ar" ? ar : undefined;
+  const hUnit = t("time.hourShort");
+  const mUnit = t("time.minShort");
   const [expanded, setExpanded] = useState(false);
   const todayFlag = isToday(new Date(group.date));
   const dayNum = format(new Date(group.date), "d");
-  const dayName = format(new Date(group.date), "EEE", { locale: ar });
+  const dayName = format(new Date(group.date), "EEE", { locale });
 
   return (
-    <div className={`bg-white rounded-2xl overflow-hidden border transition-all duration-200 ${
-      group.isActive ? "border-[#1F2937] shadow-sm" : "border-[#E5E7EB] hover:border-[#D1D5DB]"
+    <div className={`bg-[var(--adm-surface)] rounded-2xl overflow-hidden border transition-all duration-200 ${
+      group.isActive ? "border-[var(--adm-text-1)] shadow-sm" : "border-[var(--adm-border)] hover:border-[var(--adm-text-3)]"
     }`}>
       {/* Header */}
       <button onClick={() => setExpanded(p => !p)}
-        className="w-full p-4 flex items-start gap-4 hover:bg-[#FAFAFA] transition-colors text-right">
+        className="w-full p-4 flex items-start gap-4 hover:bg-[var(--adm-chip)] transition-colors text-start">
 
         {/* Date Badge */}
         <div className={`flex-shrink-0 w-12 h-12 rounded-xl flex flex-col items-center justify-center border ${
-          todayFlag ? "bg-[#18181B] border-[#18181B]" : "bg-[#FAFAFA] border-[#F4F4F5]"
+          todayFlag ? "bg-[var(--adm-accent)] border-[var(--adm-accent)]" : "bg-[var(--adm-chip)] border-[var(--adm-bg)]"
         }`}>
-          <span className={`text-[9px] font-semibold uppercase ${todayFlag ? "text-white/70" : "text-[#9CA3AF]"}`}>{dayName}</span>
-          <span className={`text-[20px] font-bold leading-none font-mono ${todayFlag ? "text-white" : "text-[#111827]"}`}>{dayNum}</span>
+          <span className={`text-[9px] font-semibold uppercase ${todayFlag ? "text-[var(--adm-accent-fg)]/70" : "text-[var(--adm-text-2)]"}`}>{dayName}</span>
+          <span className={`text-[20px] font-bold leading-none font-mono ${todayFlag ? "text-[var(--adm-accent-fg)]" : "text-[var(--adm-text-1)]"}`}>{dayNum}</span>
         </div>
 
         {/* Info */}
-        <div className="flex-1 min-w-0 text-right">
+        <div className="flex-1 min-w-0 text-start">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="font-bold text-[15px] text-[#111827]" style={{ fontFamily: "'Cairo', sans-serif" }}>{group.managerName}</span>
+            <span className="font-bold text-[15px] text-[var(--adm-text-1)]" style={{ fontFamily: "'Cairo', sans-serif" }}>{group.managerName}</span>
             {group.isActive && (
-              <span className="flex items-center gap-1 text-xs font-bold text-[#18181B] bg-[#F4F4F5] px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#18181B] animate-pulse inline-block" />
-                نشط الآن
+              <span className="flex items-center gap-1 text-xs font-bold text-[var(--adm-text-1)] bg-[var(--adm-bg)] px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--adm-accent)] animate-pulse inline-block" />
+                {t("reports.activeNow")}
               </span>
             )}
             {todayFlag && !group.isActive && (
-              <span className="text-[10px] font-bold text-[#059669] bg-[#ECFDF5] px-2 py-0.5 rounded-full">اليوم</span>
+              <span className="text-[10px] font-bold text-[var(--adm-green)] bg-[var(--adm-green-soft)] px-2 py-0.5 rounded-full">{t("reports.today")}</span>
             )}
           </div>
           <div className="flex items-center gap-3 flex-wrap text-sm">
-            <div className="flex items-center gap-1.5 text-[#6B7280]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#18181B]" />
-              <span className="font-mono text-xs">{fmtTime(group.firstVisit.checkInAt)}</span>
+            <div className="flex items-center gap-1.5 text-[var(--adm-text-2)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--adm-accent)]" />
+              <span className="font-mono text-xs">{fmtTime(group.firstVisit.checkInAt, locale)}</span>
               <span className="text-xs truncate max-w-[120px]">{group.firstVisit.branchName}</span>
             </div>
             {group.visits.length > 1 && (
               <>
-                <span className="text-[#D1D5DB] text-xs">··· {group.visits.length} زيارات ···</span>
-                <div className="flex items-center gap-1.5 text-[#6B7280]">
-                  <span className={`w-1.5 h-1.5 rounded-full ${group.isActive ? "bg-[#18181B] animate-pulse" : "bg-[#DC2626]"}`} />
-                  <span className="font-mono text-xs">{group.lastVisit.checkOutAt ? fmtTime(group.lastVisit.checkOutAt) : "لم ينهِ"}</span>
+                <span className="text-[var(--adm-text-3)] text-xs">··· {group.visits.length} {t("reports.visits")} ···</span>
+                <div className="flex items-center gap-1.5 text-[var(--adm-text-2)]">
+                  <span className={`w-1.5 h-1.5 rounded-full ${group.isActive ? "bg-[var(--adm-accent)] animate-pulse" : "bg-[var(--adm-red)]"}`} />
+                  <span className="font-mono text-xs">{group.lastVisit.checkOutAt ? fmtTime(group.lastVisit.checkOutAt, locale) : t("reports.notFinished")}</span>
                   <span className="text-xs truncate max-w-[120px]">{group.lastVisit.branchName}</span>
                 </div>
               </>
@@ -234,21 +251,21 @@ function DayCard({ group }: { group: DayGroup }) {
         {/* Stats + Toggle */}
         <div className="flex items-center gap-3 flex-shrink-0">
           <div className="text-center hidden sm:block">
-            <div className="font-bold text-xl text-[#18181B] font-mono">{group.visits.length}</div>
-            <div className="text-[10px] text-[#9CA3AF] font-semibold">زيارة</div>
+            <div className="font-bold text-xl text-[var(--adm-text-1)] font-mono">{group.visits.length}</div>
+            <div className="text-[10px] text-[var(--adm-text-2)] font-semibold">{t("reports.visit")}</div>
           </div>
           <div className="text-center hidden sm:block">
-            <div className="font-bold text-sm text-[#111827] font-mono">{fmtDuration(group.totalDurationMin)}</div>
-            <div className="text-[10px] text-[#9CA3AF] font-semibold">إجمالي</div>
+            <div className="font-bold text-sm text-[var(--adm-text-1)] font-mono">{fmtDuration(group.totalDurationMin, hUnit, mUnit)}</div>
+            <div className="text-[10px] text-[var(--adm-text-2)] font-semibold">{t("reports.total")}</div>
           </div>
           {group.totalDistanceKm > 0 && (
             <div className="text-center hidden sm:block">
-              <div className="font-bold text-sm text-[#0369A1] font-mono">{group.totalDistanceKm} كم</div>
-              <div className="text-[10px] text-[#9CA3AF] font-semibold">مسافة</div>
+              <div className="font-bold text-sm text-[var(--adm-blue)] font-mono">{group.totalDistanceKm} {t("reports.km")}</div>
+              <div className="text-[10px] text-[var(--adm-text-2)] font-semibold">{t("reports.distance")}</div>
             </div>
           )}
           <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-            expanded ? "bg-[#F4F4F5] text-[#18181B]" : "bg-[#F3F4F6] text-[#9CA3AF]"
+            expanded ? "bg-[var(--adm-bg)] text-[var(--adm-text-1)]" : "bg-[var(--adm-bg)] text-[var(--adm-text-2)]"
           }`}>
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </div>
@@ -257,10 +274,10 @@ function DayCard({ group }: { group: DayGroup }) {
 
       {/* Expanded Timeline */}
       {expanded && (
-        <div className="px-5 pb-5 border-t border-[#F3F4F6]">
+        <div className="px-5 pb-5 border-t border-[var(--adm-bg)]">
           <div className="pt-4 relative">
             {/* Timeline line */}
-            <div className="absolute right-[27px] top-8 bottom-4 w-px bg-gradient-to-b from-[#71717A] via-[#F4F4F5] to-transparent" />
+            <div className="absolute end-[27px] top-8 bottom-4 w-px bg-gradient-to-b from-[var(--adm-text-2)] via-[var(--adm-bg)] to-transparent" />
 
             <div className="space-y-4">
               {group.visits.map((v, idx) => {
@@ -272,61 +289,61 @@ function DayCard({ group }: { group: DayGroup }) {
                     {/* Node */}
                     <div className="flex-shrink-0 w-8 flex flex-col items-center">
                       <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center z-10 ${
-                        isCheckedIn ? "border-[#18181B] bg-[#F4F4F5]" :
-                        isFirst ? "border-[#059669] bg-[#ECFDF5]" : "border-[#E5E7EB] bg-white"
+                        isCheckedIn ? "border-[var(--adm-text-2)] bg-[var(--adm-bg)]" :
+                        isFirst ? "border-[var(--adm-green)] bg-[var(--adm-green-soft)]" : "border-[var(--adm-border)] bg-[var(--adm-surface)]"
                       }`}>
                         <span className={`text-[11px] font-bold font-mono ${
-                          isCheckedIn ? "text-[#18181B]" : isFirst ? "text-[#059669]" : "text-[#6B7280]"
+                          isCheckedIn ? "text-[var(--adm-text-1)]" : isFirst ? "text-[var(--adm-green)]" : "text-[var(--adm-text-2)]"
                         }`}>{idx + 1}</span>
                       </div>
                     </div>
 
                     {/* Content */}
                     <div className={`flex-1 p-3 rounded-xl border transition-colors ${
-                      isCheckedIn ? "border-[#71717A] bg-[#F4F4F5]" : "border-[#F3F4F6] bg-[#FAFAFA]"
+                      isCheckedIn ? "border-[var(--adm-text-2)] bg-[var(--adm-bg)]" : "border-[var(--adm-border)] bg-[var(--adm-chip)]"
                     }`}>
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="font-bold text-sm text-[#111827]" style={{ fontFamily: "'Cairo', sans-serif" }}>{v.branchName ?? "مأمورية خارجية"}</span>
+                            <span className="font-bold text-sm text-[var(--adm-text-1)]" style={{ fontFamily: "'Cairo', sans-serif" }}>{v.branchName ?? t("reports.externalMission")}</span>
                             {v.branchCode && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#F4F4F5] text-[#18181B] font-mono">{v.branchCode}</span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--adm-bg)] text-[var(--adm-text-1)] font-mono">{v.branchCode}</span>
                             )}
                             {v.visitType === "external_mission" && (
-                              <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-purple-200">مأمورية خارجية</span>
+                              <span className="bg-purple-100 text-purple-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-purple-200">{t("reports.externalMission")}</span>
                             )}
                             {v.noteType === "short_visit" && (
-                              <span className="bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-red-200">زيارة قصيرة</span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ background: "var(--adm-red-soft)", color: "var(--adm-red)", borderColor: "var(--adm-red-soft-border)" }}>{t("reports.shortVisit")}</span>
                             )}
                             {v.isMocked === "yes" && (
-                              <span className="flex items-center gap-1 bg-red-100 text-red-700 text-[10px] font-bold px-1.5 py-0.5 rounded border border-red-200">
+                              <span className="flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border" style={{ background: "var(--adm-red-soft)", color: "var(--adm-red)", borderColor: "var(--adm-red-soft-border)" }}>
                                 <span className="material-symbols-outlined text-[12px]">warning</span>
-                                زيارة وهمية / مشبوهة
+                                {t("reports.spoofedVisit")}
                               </span>
                             )}
                           </div>
                           <div className="flex items-center gap-3 flex-wrap">
                             <div className="flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-[#18181B]" />
-                              <span className="font-mono text-xs font-bold text-[#18181B]">{fmtTime(v.checkInAt)}</span>
-                              <span className="text-[#9CA3AF] text-[10px]">دخل</span>
+                              <Clock className="w-3 h-3 text-[var(--adm-text-1)]" />
+                              <span className="font-mono text-xs font-bold text-[var(--adm-text-1)]">{fmtTime(v.checkInAt, locale)}</span>
+                              <span className="text-[var(--adm-text-2)] text-[10px]">{t("reports.checkin")}</span>
                             </div>
                             {v.checkOutAt && (
                               <div className="flex items-center gap-1">
-                                <Clock className="w-3 h-3 text-[#DC2626]" />
-                                <span className="font-mono text-xs font-bold text-[#DC2626]">{fmtTime(v.checkOutAt)}</span>
-                                <span className="text-[#9CA3AF] text-[10px]">خرج</span>
+                                <Clock className="w-3 h-3 text-[var(--adm-red)]" />
+                                <span className="font-mono text-xs font-bold text-[var(--adm-red)]">{fmtTime(v.checkOutAt, locale)}</span>
+                                <span className="text-[var(--adm-text-2)] text-[10px]">{t("reports.checkout")}</span>
                               </div>
                             )}
                             {dur > 0 && (
-                              <span className="font-mono text-[11px] font-bold text-[#059669] bg-[#ECFDF5] px-1.5 py-0.5 rounded-full border border-[#D1FAE5]">
-                                {fmtDuration(dur)}
+                              <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded-full border" style={{ color: "var(--adm-green)", background: "var(--adm-green-soft)", borderColor: "var(--adm-green-soft-border)" }}>
+                                {fmtDuration(dur, hUnit, mUnit)}
                               </span>
                             )}
                             {v.distanceToPrevBranchKm != null && (
-                              <span className="font-mono text-[11px] font-bold text-[#0369A1] bg-[#E0F2FE] px-1.5 py-0.5 rounded-full border border-[#BAE6FD] flex items-center gap-1">
+                              <span className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded-full border flex items-center gap-1" style={{ color: "var(--adm-blue)", background: "var(--adm-blue-soft)", borderColor: "var(--adm-blue-soft-border)" }}>
                                 <span className="material-symbols-outlined text-[11px]">directions_car</span>
-                                {v.distanceToPrevBranchKm} كم
+                                {v.distanceToPrevBranchKm} {t("reports.km")}
                               </span>
                             )}
                           </div>
@@ -334,26 +351,30 @@ function DayCard({ group }: { group: DayGroup }) {
                           {v.isMocked === "yes" && v.mockReasons && (
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {parseMockReasons(v.mockReasons).map((r, i) => (
-                                <span key={i} className="text-[10px] font-semibold text-red-700 bg-red-50/80 px-2 py-0.5 rounded border border-red-100 flex items-center gap-1">
-                                  <span className="w-1 h-1 rounded-full bg-red-500"></span>
-                                  {translateReason(r)}
+                                <span key={i} className="text-[10px] font-semibold px-2 py-0.5 rounded border flex items-center gap-1" style={{ color: "var(--adm-red)", background: "var(--adm-red-soft)", borderColor: "var(--adm-red-soft-border)" }}>
+                                  <span className="w-1 h-1 rounded-full" style={{ background: "var(--adm-red)" }}></span>
+                                  {translateReason(r, t)}
                                 </span>
                               ))}
                             </div>
                           )}
 
                           {v.notes && (
-                            <p className="mt-1 text-xs text-[#6B7280] bg-white p-2 rounded-md border border-[#E5E7EB] shadow-sm whitespace-pre-wrap border-l-2 border-l-[#0fa5f8]">
+                            <p className="mt-1 text-xs text-[var(--adm-text-2)] bg-[var(--adm-surface)] p-2 rounded-md border border-[var(--adm-border)] shadow-sm whitespace-pre-wrap border-s-2 border-s-[#0fa5f8]">
                               {v.notes}
                             </p>
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          {v.photoUrl && <Camera className="w-4 h-4 text-[#18181B]" />}
+                          {v.photoUrl && <Camera className="w-4 h-4 text-[var(--adm-text-1)]" />}
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                            isCheckedIn ? "text-[#18181B] bg-[#F4F4F5] border-[#71717A]" : "text-[#DC2626] bg-[#FEE2E2] border-[#FECACA]"
-                          }`}>
-                            {isCheckedIn ? "داخل" : "غادر"}
+                            isCheckedIn
+                              ? "text-[var(--adm-text-1)] bg-[var(--adm-bg)] border-[var(--adm-text-2)]"
+                              : "border-[var(--adm-red-soft-border)]"
+                          }`}
+                            style={!isCheckedIn ? { color: "var(--adm-red)", background: "var(--adm-red-soft)" } : undefined}
+                          >
+                            {isCheckedIn ? t("reports.statusIn") : t("reports.statusOut")}
                           </span>
                         </div>
                       </div>
@@ -365,13 +386,13 @@ function DayCard({ group }: { group: DayGroup }) {
               {!group.isActive && (
                 <div className="flex gap-4 relative">
                   <div className="flex-shrink-0 w-8 flex items-center justify-center">
-                    <div className="w-6 h-6 rounded-full border-2 border-dashed border-[#D1D5DB] flex items-center justify-center z-10 bg-white">
-                      <CheckCircle2 className="w-3 h-3 text-[#9CA3AF]" />
+                    <div className="w-6 h-6 rounded-full border-2 border-dashed border-[var(--adm-text-3)] flex items-center justify-center z-10 bg-[var(--adm-surface)]">
+                      <CheckCircle2 className="w-3 h-3 text-[var(--adm-text-2)]" />
                     </div>
                   </div>
                   <div className="flex-1 py-1 flex items-center gap-2">
-                    <span className="text-xs text-[#9CA3AF]">انتهى اليوم</span>
-                    <span className="text-xs font-bold text-[#059669] font-mono">· {fmtDuration(group.totalDurationMin)} إجمالي</span>
+                    <span className="text-xs text-[var(--adm-text-2)]">{t("reports.dayEnded")}</span>
+                    <span className="text-xs font-bold text-[var(--adm-green)] font-mono">· {fmtDuration(group.totalDurationMin, hUnit, mUnit)} {t("reports.total")}</span>
                   </div>
                 </div>
               )}
@@ -385,6 +406,11 @@ function DayCard({ group }: { group: DayGroup }) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminReports() {
+  const { t, lang } = useLang();
+  const locale: Locale = lang === "ar" ? ar : undefined;
+  const hUnit = t("time.hourShort");
+  const mUnit = t("time.minShort");
+
   const now = new Date();
   const [filters, setFilters] = useState({
     startDate: format(startOfMonth(now), "yyyy-MM-dd"),
@@ -392,6 +418,16 @@ export default function AdminReports() {
     managerId: "",
   });
   const [exporting, setExporting] = useState(false);
+
+  // ── Deep-link: /reports?managerId=<n> pre-filters the manager dropdown (Part B)
+  const searchString = useSearch();
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const mid = params.get("managerId");
+    if (mid && /^\d+$/.test(mid)) {
+      setFilters((f) => (f.managerId === mid ? f : { ...f, managerId: mid }));
+    }
+  }, [searchString]);
 
   const { data: managers = [] } = trpc.manager.list.useQuery();
   const queryInput = {
@@ -403,14 +439,14 @@ export default function AdminReports() {
   };
   const { data, isLoading } = trpc.visit.adminList.useQuery(queryInput);
   const visits: Visit[] = (data?.items ?? []) as Visit[];
-  const dayGroups = useMemo(() => groupVisits(visits), [visits]);
+  const dayGroups = useMemo(() => groupVisits(visits, locale), [visits, locale]);
 
   const checkedOut = visits.filter((v) => v.checkOutAt);
   const totalMinutes = checkedOut.reduce((acc, v) => acc + durationMin(v.checkInAt, v.checkOutAt), 0);
   const activeCount = visits.filter((v) => v.status === "checked_in").length;
   const monthLabel = filters.startDate
-    ? format(new Date(filters.startDate), "MMMM yyyy", { locale: ar })
-    : format(now, "MMMM yyyy", { locale: ar });
+    ? format(new Date(filters.startDate), "MMMM yyyy", { locale })
+    : format(now, "MMMM yyyy", { locale });
 
   const handleExport = () => {
     if (visits.length === 0) return;
@@ -419,7 +455,7 @@ export default function AdminReports() {
       const managerNameFilter = filters.managerId
         ? (managers as any[]).find(m => m.id.toString() === filters.managerId)?.userName || ""
         : "";
-      exportToExcel(visits, managerNameFilter, filters.startDate, filters.endDate);
+      exportToExcel(visits, managerNameFilter, filters.startDate, filters.endDate, t, locale, hUnit, mUnit);
     } finally {
       setTimeout(() => setExporting(false), 500);
     }
@@ -428,29 +464,29 @@ export default function AdminReports() {
   const totalDistanceKm = dayGroups.reduce((acc, g) => acc + g.totalDistanceKm, 0);
 
   const statsData = [
-    { icon: "calendar_month", label: "Work Days", value: isLoading ? "..." : dayGroups.length, color: "#18181B", bg: "#F4F4F5" },
-    { icon: "location_on", label: "Total Visits", value: isLoading ? "..." : visits.length, color: "#059669", bg: "#ECFDF5" },
-    { icon: "schedule", label: "Total Duration", value: isLoading ? "..." : fmtDuration(totalMinutes), color: "#D97706", bg: "#FEF3C7" },
-    { icon: "directions_car", label: "Total Distance", value: isLoading ? "..." : totalDistanceKm > 0 ? `${totalDistanceKm} كم` : "—", color: "#0369A1", bg: "#E0F2FE" },
+    { icon: "calendar_month", label: t("reports.workDays"), value: isLoading ? "..." : dayGroups.length, color: "var(--adm-text-1)", bg: "var(--adm-bg)" },
+    { icon: "location_on", label: t("reports.totalVisits"), value: isLoading ? "..." : visits.length, color: "var(--adm-green)", bg: "var(--adm-green-soft)" },
+    { icon: "schedule", label: t("reports.totalDuration"), value: isLoading ? "..." : fmtDuration(totalMinutes, hUnit, mUnit), color: "var(--adm-amber)", bg: "var(--adm-amber-soft)" },
+    { icon: "directions_car", label: t("reports.totalDistance"), value: isLoading ? "..." : totalDistanceKm > 0 ? `${totalDistanceKm} ${t("reports.km")}` : "—", color: "var(--adm-blue)", bg: "var(--adm-blue-soft)" },
   ];
 
   return (
     <div className="min-h-full pb-24 md:pb-8">
 
       {/* Mobile Header */}
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-[#F3F4F6] md:hidden">
+      <header className="sticky top-0 z-30 bg-[var(--adm-surface)]/90 backdrop-blur border-b border-[var(--adm-border)] md:hidden">
         <div className="flex items-center justify-between px-4 h-14">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#6D28D9] to-[#71717A] flex items-center justify-center">
               <span className="material-symbols-outlined text-white text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>bar_chart</span>
             </div>
             <div>
-              <h1 className="font-bold text-[15px] text-[#18181B] leading-none" style={{ fontFamily: "'Cairo', sans-serif" }}>Visit Reports</h1>
-              <p className="text-[10px] text-[#9CA3AF] leading-none mt-0.5">{monthLabel}</p>
+              <h1 className="font-bold text-[15px] text-[var(--adm-text-1)] leading-none" style={{ fontFamily: "'Cairo', sans-serif" }}>{t("reports.title")}</h1>
+              <p className="text-[10px] text-[var(--adm-text-2)] leading-none mt-0.5">{monthLabel}</p>
             </div>
           </div>
           <button onClick={handleExport} disabled={exporting || visits.length === 0 || isLoading}
-            className="w-9 h-9 flex items-center justify-center text-[#18181B] hover:bg-[#F4F4F5] rounded-xl transition-colors disabled:opacity-40">
+            className="w-9 h-9 flex items-center justify-center text-[var(--adm-text-1)] hover:bg-[var(--adm-bg)] rounded-xl transition-colors disabled:opacity-40">
             {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
           </button>
         </div>
@@ -461,34 +497,34 @@ export default function AdminReports() {
         {/* Desktop Header */}
         <div className="hidden md:flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-[#111827]" style={{ fontFamily: "'Cairo', sans-serif" }}>Visit Reports</h1>
-            <p className="text-[#6B7280] text-sm mt-1">{monthLabel}</p>
+            <h1 className="text-2xl font-bold text-[var(--adm-text-1)]" style={{ fontFamily: "'Cairo', sans-serif" }}>{t("reports.title")}</h1>
+            <p className="text-[var(--adm-text-2)] text-sm mt-1">{monthLabel}</p>
           </div>
           <button onClick={handleExport} disabled={exporting || visits.length === 0 || isLoading}
             className="h-11 px-6 flex items-center gap-2 rounded-2xl text-sm font-bold text-white bg-gradient-to-br from-[#6D28D9] to-[#71717A] hover:shadow-lg hover:shadow-[#71717A]/30 hover:scale-105 transition-all duration-200 cursor-pointer disabled:opacity-40">
             {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {exporting ? "Exporting......" : "Export Excel"}
+            {exporting ? t("reports.exporting") : t("reports.exportExcel")}
           </button>
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-2xl p-5 border border-[#F4F4F5]">
+        <div className="bg-[var(--adm-surface)] rounded-2xl p-5 border border-[var(--adm-border)]">
           <div className="flex items-center gap-2 mb-4">
-            <span className="material-symbols-outlined text-[#18181B] text-[18px]">tune</span>
-            <span className="font-bold text-sm text-[#111827]" style={{ fontFamily: "'Cairo', sans-serif" }}>Report Filters</span>
+            <span className="material-symbols-outlined text-[var(--adm-text-1)] text-[18px]">tune</span>
+            <span className="font-bold text-sm text-[var(--adm-text-1)]" style={{ fontFamily: "'Cairo', sans-serif" }}>{t("reports.filters")}</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               {
-                label: "Manager",
+                label: t("reports.manager"),
                 content: (
-                  <div className="relative rounded-xl border border-[#E5E7EB] focus-within:border-[#18181B] focus-within:ring-2 focus-within:ring-[#18181B]/20 transition-all bg-white">
-                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] text-[18px]">person</span>
-                    <select className="w-full h-11 pr-10 pl-4 text-sm text-[#111827] bg-transparent outline-none rounded-xl cursor-pointer"
+                  <div className="relative rounded-xl border border-[var(--adm-border)] focus-within:border-[var(--adm-text-1)] focus-within:ring-2 focus-within:ring-[var(--adm-text-1)]/20 transition-all bg-[var(--adm-surface)]">
+                    <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-[var(--adm-text-2)] text-[18px]">person</span>
+                    <select className="w-full h-11 ps-10 pe-4 text-sm text-[var(--adm-text-1)] bg-transparent outline-none rounded-xl cursor-pointer"
                       value={filters.managerId}
                       onChange={(e) => setFilters(f => ({ ...f, managerId: e.target.value }))}
                       style={{ fontFamily: "'Cairo', sans-serif" }}>
-                      <option value="">كل Managerين</option>
+                      <option value="">{t("reports.allManagers")}</option>
                       {(managers as any[]).map((m: any) => (
                         <option key={m.id} value={m.id}>{m.userName}</option>
                       ))}
@@ -497,22 +533,22 @@ export default function AdminReports() {
                 )
               },
               {
-                label: "From Date",
+                label: t("reports.fromDate"),
                 content: (
-                  <div className="relative rounded-xl border border-[#E5E7EB] focus-within:border-[#18181B] focus-within:ring-2 focus-within:ring-[#18181B]/20 transition-all bg-white">
-                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] text-[18px]">calendar_today</span>
-                    <input type="date" className="w-full h-11 pr-10 pl-4 text-sm text-[#111827] bg-transparent outline-none rounded-xl"
+                  <div className="relative rounded-xl border border-[var(--adm-border)] focus-within:border-[var(--adm-text-1)] focus-within:ring-2 focus-within:ring-[var(--adm-text-1)]/20 transition-all bg-[var(--adm-surface)]">
+                    <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-[var(--adm-text-2)] text-[18px]">calendar_today</span>
+                    <input type="date" className="w-full h-11 ps-10 pe-4 text-sm text-[var(--adm-text-1)] bg-transparent outline-none rounded-xl"
                       value={filters.startDate}
                       onChange={(e) => setFilters(f => ({ ...f, startDate: e.target.value }))} />
                   </div>
                 )
               },
               {
-                label: "To Date",
+                label: t("reports.toDate"),
                 content: (
-                  <div className="relative rounded-xl border border-[#E5E7EB] focus-within:border-[#18181B] focus-within:ring-2 focus-within:ring-[#18181B]/20 transition-all bg-white">
-                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-[#9CA3AF] text-[18px]">event</span>
-                    <input type="date" className="w-full h-11 pr-10 pl-4 text-sm text-[#111827] bg-transparent outline-none rounded-xl"
+                  <div className="relative rounded-xl border border-[var(--adm-border)] focus-within:border-[var(--adm-text-1)] focus-within:ring-2 focus-within:ring-[var(--adm-text-1)]/20 transition-all bg-[var(--adm-surface)]">
+                    <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-[var(--adm-text-2)] text-[18px]">event</span>
+                    <input type="date" className="w-full h-11 ps-10 pe-4 text-sm text-[var(--adm-text-1)] bg-transparent outline-none rounded-xl"
                       value={filters.endDate}
                       onChange={(e) => setFilters(f => ({ ...f, endDate: e.target.value }))} />
                   </div>
@@ -520,7 +556,7 @@ export default function AdminReports() {
               }
             ].map(({ label, content }) => (
               <div key={label}>
-                <label className="block text-[#6B7280] text-xs font-semibold mb-1.5">{label}</label>
+                <label className="block text-[var(--adm-text-2)] text-xs font-semibold mb-1.5">{label}</label>
                 {content}
               </div>
             ))}
@@ -530,12 +566,12 @@ export default function AdminReports() {
         {/* Stats */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {statsData.map((s) => (
-            <div key={s.label} className="bg-white rounded-2xl p-4 border border-[#F4F4F5]">
+            <div key={s.label} className="bg-[var(--adm-surface)] rounded-2xl p-4 border border-[var(--adm-border)]">
               <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background: s.bg }}>
                 <span className="material-symbols-outlined text-[20px]" style={{ color: s.color, fontVariationSettings: "'FILL' 1" }}>{s.icon}</span>
               </div>
               <p className="font-bold text-2xl font-mono leading-none" style={{ color: s.color }}>{s.value}</p>
-              <p className="text-[#9CA3AF] text-xs font-semibold mt-1">{s.label}</p>
+              <p className="text-[var(--adm-text-2)] text-xs font-semibold mt-1">{s.label}</p>
             </div>
           ))}
         </div>
@@ -544,23 +580,23 @@ export default function AdminReports() {
         {isLoading ? (
           <div className="flex justify-center items-center py-24">
             <div className="text-center">
-              <Loader2 className="w-10 h-10 animate-spin text-[#18181B] mx-auto mb-3" />
-              <p className="text-[#6B7280] text-sm">Loading reports......</p>
+              <Loader2 className="w-10 h-10 animate-spin text-[var(--adm-text-1)] mx-auto mb-3" />
+              <p className="text-[var(--adm-text-2)] text-sm">{t("reports.loading")}</p>
             </div>
           </div>
         ) : dayGroups.length === 0 ? (
-          <div className="bg-white rounded-2xl p-16 text-center border border-[#F4F4F5]">
-            <div className="w-16 h-16 rounded-2xl bg-[#F4F4F5] flex items-center justify-center mx-auto mb-4">
-              <span className="material-symbols-outlined text-[#18181B] text-[32px]">bar_chart</span>
+          <div className="bg-[var(--adm-surface)] rounded-2xl p-16 text-center border border-[var(--adm-border)]">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--adm-bg)] flex items-center justify-center mx-auto mb-4">
+              <span className="material-symbols-outlined text-[var(--adm-text-1)] text-[32px]">bar_chart</span>
             </div>
-            <p className="font-bold text-[#111827] text-base mb-2" style={{ fontFamily: "'Cairo', sans-serif" }}>No Visits Found</p>
-            <p className="text-[#9CA3AF] text-sm">Try adjusting the date range or selecting a different manager.</p>
+            <p className="font-bold text-[var(--adm-text-1)] text-base mb-2" style={{ fontFamily: "'Cairo', sans-serif" }}>{t("reports.noVisits")}</p>
+            <p className="text-[var(--adm-text-2)] text-sm">{t("reports.noVisitsHint")}</p>
           </div>
         ) : (
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-[#9CA3AF] text-xs font-semibold">
-                {dayGroups.length} work days — click to expand
+              <span className="text-[var(--adm-text-2)] text-xs font-semibold">
+                {t("reports.workDaysHint", { n: dayGroups.length })}
               </span>
             </div>
             {dayGroups.map((g) => (
