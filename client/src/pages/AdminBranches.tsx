@@ -203,76 +203,7 @@ export default function AdminBranches() {
         </button>
       </div>
 
-      {/* ── KPI Row ─────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          {
-            label: t("branches.kpiTotal"),
-            value: isLoading ? "—" : list.length,
-            icon: "location_city",
-            color: "var(--adm-text-1)",
-            bg: "var(--adm-bg)",
-          },
-          {
-            label: t("branches.kpiActive"),
-            value: isLoading ? "—" : activeCount,
-            icon: "check_circle",
-            color: "var(--adm-green)",
-            bg: "var(--adm-green-soft)",
-          },
-          {
-            label: t("branches.kpiInactive"),
-            value: isLoading ? "—" : list.length - activeCount,
-            icon: "cancel",
-            color: "var(--adm-red)",
-            bg: "var(--adm-red-soft)",
-          },
-          {
-            label: t("branches.kpiActiveRate"),
-            value: isLoading ? "—" : `${actPct}%`,
-            icon: "percent",
-            color: "var(--adm-text-2)",
-            bg: "var(--adm-bg)",
-          },
-        ].map(({ label, value, icon, color, bg }) => (
-          <div
-            key={label}
-            className="flex items-center justify-between p-4"
-            style={{
-              background: "var(--adm-surface)",
-              border: "1px solid var(--adm-border)",
-              borderRadius: 16,
-            }}
-          >
-            <div>
-              <p
-                className="text-[10px] font-bold tracking-widest uppercase mb-1"
-                style={{ color: "var(--adm-text-3)" }}
-              >
-                {label}
-              </p>
-              <p className="text-[26px] font-bold leading-none" style={{ color }}>
-                {value}
-              </p>
-            </div>
-            <div
-              className="w-9 h-9 rounded-full flex items-center justify-center"
-              style={{ background: bg }}
-            >
-              <span
-                className="material-symbols-outlined"
-                style={{
-                  fontSize: 18,
-                  color,
-                  fontVariationSettings: "'FILL' 1",
-                }}
-              >
-                {icon}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
+
 
       {/* ── Table Card ──────────────────────────────────────────────────────── */}
       <div

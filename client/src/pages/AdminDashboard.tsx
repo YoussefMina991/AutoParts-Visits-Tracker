@@ -119,7 +119,7 @@ function ManagerCard({ m, visitsToday }: { m: any; visitsToday: number }) {
         <div className="adm-glass-body">
           {/* Name + Branch */}
           <p className="adm-glass-name">{m.userName}</p>
-          <p className="adm-glass-role">{m.branchName || t("dashboard.unassigned")}</p>
+          {m.branchName && <p className="adm-glass-role">{m.branchName}</p>}
 
           {/* Status chip */}
           <div className="adm-glass-chip-row">
@@ -144,20 +144,6 @@ function ManagerCard({ m, visitsToday }: { m: any; visitsToday: number }) {
             </div>
           </div>
 
-          {/* CTA row */}
-          <div className="adm-glass-cta-row">
-            <span className="adm-glass-cta-btn">
-              {t("dashboard.viewAll")}
-            </span>
-            <span className="adm-glass-cta-icon">
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: 18, color: "#5cb8c4", fontVariationSettings: "'FILL' 1" }}
-              >
-                {isRTL ? "arrow_back" : "arrow_forward"}
-              </span>
-            </span>
-          </div>
         </div>
       </a>
     </Link>
@@ -491,9 +477,9 @@ export default function AdminDashboard() {
           /* glass background */
           background: linear-gradient(
             145deg,
-            rgba(255,255,255,0.75) 0%,
-            rgba(186,237,240,0.55) 60%,
-            rgba(180,230,235,0.45) 100%
+            rgba(225,245,250,0.85) 0%,
+            rgba(140,215,225,0.75) 60%,
+            rgba(120,200,215,0.65) 100%
           );
           backdrop-filter: blur(18px);
           -webkit-backdrop-filter: blur(18px);

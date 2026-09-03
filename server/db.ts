@@ -13,12 +13,14 @@ function createPool() {
     const pool = mysql.createPool({
       uri: process.env.DATABASE_URL,
       waitForConnections: true,
-      connectionLimit: 10,        // أقصى عدد connections متوازية
+      connectionLimit: 10,
       queueLimit: 0,
-      connectTimeout: 10_000,     // 10 ثانية للاتصال
-      // keepAlive ping كل دقيقتين عشان Railway ميقطعش الكونكشن
+      idleTimeout: 30_000,
       enableKeepAlive: true,
-      keepAliveInitialDelay: 120_000,
+      keepAliveInitialDelay: 10_000,
+      ssl: {
+        rejectUnauthorized: false,
+      }
     });
     return pool;
   } catch (error) {
@@ -44,20 +46,20 @@ export async function getDb(): Promise<any> {
 }
 
 // ── Helper: retry تلقائي لو الكونكشن انقطع ───────────────────────────────────
-async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
   try {
     return await fn();
   } catch (err: any) {
     const isConnError =
       err?.cause?.code === "ER_NET_READ_INTERRUPTED" ||
       err?.cause?.code === "ECONNRESET" ||
-      err?.cause?.code === "PROTOCOL_CONNECTION_LOST";
+      err?.cause?.code === "PROTOCOL_CONNECTION_LOST" ||
+      err?.code === "PROTOCOL_CONNECTION_LOST" ||
+      err?.code === "ECONNRESET";
 
     if (retries > 0 && isConnError) {
-      console.warn(`[Database] Connection lost, retrying... (${retries} left)`);
-      // reset الـ pool عشان يعمل connection جديد
-      _pool = null;
-      _db = null;
+      console.warn(`[Database] Connection lost, retrying query... (${retries} left)`);
+      // لا نقم بتدمير الـ pool، دع mysql2 يتخلص من الاتصال الميت تلقائياً
       await new Promise(r => setTimeout(r, 500));
       return withRetry(fn, retries - 1);
     }
