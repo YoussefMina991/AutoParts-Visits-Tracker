@@ -9,7 +9,6 @@ import { MapView, MapMarker, GeofenceCircle, type MapCenter } from "@/components
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Capacitor } from "@capacitor/core";
-import SelfieCapture from "@/components/SelfieCapture";
 
 export default function BranchCheckIn() {
   const [view, setView] = useState<"list" | "map">("map");
@@ -23,14 +22,11 @@ export default function BranchCheckIn() {
   }>({ isOpen: false, type: "check_in_branch" });
   const [visitNotes, setVisitNotes] = useState("");
 
-  // حالة الـ Selfie — بيتحكم في فتح شاشة الكاميرا على الويب قبل الـ check-in
   const isWebPlatform = !Capacitor.isNativePlatform();
-  const [selfieState, setSelfieState] = useState<{
-    isOpen: boolean;
-    pendingBranchId?: number;
-    pendingType: "branch" | "external";
-    capturedBase64?: string;
-  }>({ isOpen: false, pendingType: "branch" });
+
+  // ── Block Android browser users — they must use the native app ──────────────
+  const isAndroidBrowser = isWebPlatform &&
+    /android/i.test(navigator.userAgent);
 
   const { latestLocation } = useGeofenceContext();
   const gpsLocation = latestLocation ? { lat: latestLocation.lat, lon: latestLocation.lon } : null;
@@ -72,12 +68,6 @@ export default function BranchCheckIn() {
     if (globalMockedStatus) {
       return toast.error("🚨 الموقع وهمي! اقفل اي برنامج Fake GPS وحاول تاني");
     }
-    // على الويب (آيفون): نفتح شاشة الـ Selfie الاول
-    if (isWebPlatform) {
-      setSelfieState({ isOpen: true, pendingBranchId: branchId, pendingType: "branch" });
-      return;
-    }
-    // على الاندرويد النيتف: نفتح المودال مباشرة
     setNotesModalState({ isOpen: true, type: "check_in_branch", branchId });
     setVisitNotes("");
   };
@@ -87,30 +77,10 @@ export default function BranchCheckIn() {
     if (globalMockedStatus) {
       return toast.error("🚨 الموقع وهمي! اقفل اي برنامج Fake GPS وحاول تاني");
     }
-    // على الويب: نفتح الـ Selfie الاول
-    if (isWebPlatform) {
-      setSelfieState({ isOpen: true, pendingType: "external" });
-      return;
-    }
     setNotesModalState({ isOpen: true, type: "check_in_external" });
     setVisitNotes("");
   };
 
-  // بعد ما المدير يلتقط الصورة على الويب - نفتح مودال النوتس
-  const handleSelfieCapture = (base64: string) => {
-    const { pendingBranchId, pendingType } = selfieState;
-    setSelfieState(prev => ({ ...prev, isOpen: false, capturedBase64: base64 }));
-    if (pendingType === "branch" && pendingBranchId) {
-      setNotesModalState({ isOpen: true, type: "check_in_branch", branchId: pendingBranchId });
-    } else {
-      setNotesModalState({ isOpen: true, type: "check_in_external" });
-    }
-    setVisitNotes("");
-  };
-
-  const handleSelfieCancel = () => {
-    setSelfieState({ isOpen: false, pendingType: "branch" });
-  };
 
   const handleManualCheckOutClick = () => {
     if (!activeVisit) return;
@@ -151,8 +121,6 @@ export default function BranchCheckIn() {
           noteType: "general",
           manual: true,
           notes: visitNotes.trim() || undefined,
-          // ارسال الصورة مع check-in على الويب
-          ...(selfieBase64 ? { photoBase64: selfieBase64 } : {}),
         });
         toast.success(`✅ تم تسجيل دخولك في ${branchName}`);
         refetchVisits();
@@ -164,7 +132,6 @@ export default function BranchCheckIn() {
           visitType: "external_mission",
           noteType: "external_mission",
           notes: visitNotes.trim(),
-          ...(selfieBase64 ? { photoBase64: selfieBase64 } : {}),
         });
         toast.success(`✅ تم بدء مأمورية خارجية بنجاح`);
         refetchVisits();
@@ -184,8 +151,6 @@ export default function BranchCheckIn() {
         refetchVisits();
       }
       setNotesModalState({ isOpen: false, type: "check_in_branch" });
-      // مسح صورة الـ Selfie بعد الارسال
-      setSelfieState(prev => ({ ...prev, capturedBase64: undefined }));
     } catch (err: any) {
       toast.error(`❌ حدث خطأ: ${err.message || String(err)}`);
     }
@@ -197,6 +162,45 @@ export default function BranchCheckIn() {
   };
 
   const gpsDenied = !gpsLocation;
+
+  // ── Block Android browser: show friendly redirect screen ──────────────────
+  if (isAndroidBrowser) {
+    return (
+      <div style={{
+        minHeight: "100svh",
+        background: "#111417",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "32px 24px",
+        textAlign: "center",
+        gap: 20,
+        color: "#fff",
+        fontFamily: "'Cairo', sans-serif",
+      }}>
+        <div style={{
+          width: 80, height: 80, borderRadius: "50%",
+          background: "linear-gradient(135deg, #1a2236, #0fa5f833)",
+          border: "2px solid #0fa5f8",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 40, marginBottom: 8,
+        }}>
+          📱
+        </div>
+        <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>
+          استخدم التطبيق على أندرويد
+        </h2>
+        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.6)", lineHeight: 1.8, maxWidth: 300 }}>
+          هذا الرابط مخصص لمستخدمي iPhone فقط.
+          على أندرويد، يجب استخدام <strong style={{ color: "#0fa5f8" }}>التطبيق المُثبَّت</strong> على هاتفك للتسجيل.
+        </p>
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 8 }}>
+          إذا واجهت مشكلة، تواصل مع مديرك المباشر.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -622,18 +626,6 @@ export default function BranchCheckIn() {
             </DialogDescription>
           </DialogHeader>
 
-          {/* معاينة صورة الـ Selfie لو اتتلقطت على الويب */}
-          {selfieState.capturedBase64 && (notesModalState.type === "check_in_branch" || notesModalState.type === "check_in_external") && (
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-              <img
-                src={selfieState.capturedBase64}
-                alt="صورة التحقق"
-                style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: "2px solid #0fa5f8" }}
-              />
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", alignSelf: "flex-end", marginRight: 8 }}>صورة التحقق</span>
-            </div>
-          )}
-
           <div className="py-4">
             <Textarea
               placeholder={notesModalState.type === "check_in_branch" || notesModalState.type === "check_out_general" ? "ملاحظات اختيارية..." : "اكتب التفاصيل هنا..."}
@@ -656,13 +648,6 @@ export default function BranchCheckIn() {
         </DialogContent>
       </Dialog>
 
-      {/* شاشة الـ Selfie — على الويب فقط قبل كل check-in */}
-      {selfieState.isOpen && (
-        <SelfieCapture
-          onCapture={handleSelfieCapture}
-          onCancel={handleSelfieCancel}
-        />
-      )}
     </>
   );
 }
