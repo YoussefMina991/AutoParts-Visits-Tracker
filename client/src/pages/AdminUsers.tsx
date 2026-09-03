@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { useLang } from "@/lib/i18n";
 import { useAdminTheme } from "@/lib/adminTheme";
+import { useAuth } from "@/_core/hooks/useAuth";
 import {
   Dialog,
   DialogContent,
@@ -151,8 +152,13 @@ function RoleSelector({
 export default function AdminUsers() {
   const { t, lang } = useLang();
   const { theme } = useAdminTheme();
+  const { user: authUser } = useAuth();
+  const isSuperAdmin = authUser?.role === "superadmin";
   const locale = lang === "ar" ? ar : undefined;
   const [createOpen, setCreateOpen] = useState(false);
+  const [superEditOpen, setSuperEditOpen] = useState(false);
+  const [superEditTarget, setSuperEditTarget] = useState<any | null>(null);
+  const [superEditForm, setSuperEditForm] = useState<any | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -226,6 +232,17 @@ export default function AdminUsers() {
     onSuccess: () => {
       toast.success(t("users.checkinModeUpdated"));
       refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // 🦸‍♂️ السوبر أدمن — تعديل شامل لأي مستخدم
+  const superUpdateMutation = trpc.users.superadminUpdateUser.useMutation({
+    onSuccess: () => {
+      toast.success("تم تحديث المستخدم (سوبر أدمن)");
+      refetch();
+      setSuperEditOpen(false);
+      setSuperEditTarget(null);
     },
     onError: (e) => toast.error(e.message),
   });
@@ -578,6 +595,30 @@ export default function AdminUsers() {
                         </span>
                       </button>
                     )}
+                    {/* 🦸 سوبر أدمن — زر تعديل شامل */}
+                    {isSuperAdmin && (
+                      <button
+                        onClick={() => {
+                          setSuperEditTarget(u);
+                          setSuperEditForm({
+                            id: u.id,
+                            username: u.username,
+                            name: u.name ?? "",
+                            email: u.email ?? "",
+                            role: u.role,
+                            password: "",
+                            checkinMode: u.checkinMode ?? "automatic",
+                          });
+                          setSuperEditOpen(true);
+                        }}
+                        className="h-8 px-3 rounded-xl flex items-center gap-1.5 transition-colors text-xs font-bold cursor-pointer"
+                        style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.25)" }}
+                        title="تعديل شامل (سوبر أدمن)"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 13 }}>manage_history</span>
+                        سوبر تعديل
+                      </button>
+                    )}
                     <button
                       onClick={() => handleEdit(u)}
                       className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors hover:bg-[var(--adm-bg)] cursor-pointer"
@@ -607,6 +648,132 @@ export default function AdminUsers() {
           </div>
         )}
       </div>
+
+      {/* ── 🦸 Superadmin Full Edit Dialog ──────────────────────────────────── */}
+      {isSuperAdmin && superEditForm && (
+        <Dialog open={superEditOpen} onOpenChange={(v) => { setSuperEditOpen(v); if (!v) setSuperEditTarget(null); }}>
+          <DialogContent
+            className={`p-0 overflow-hidden sm:rounded-2xl max-w-md admin-root ${theme === 'dark' ? 'dark' : ''}`}
+            style={{ background: "#0a0a0f", border: "1px solid rgba(16,185,129,0.3)" }}
+            dir="rtl"
+          >
+            <DialogHeader className="px-6 py-4" style={{ borderBottom: "1px solid rgba(16,185,129,0.15)" }}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "rgba(16,185,129,0.2)" }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16, color: "#10b981", fontVariationSettings: "'FILL' 1" }}>manage_history</span>
+                </div>
+                <DialogTitle className="text-[15px] font-bold" style={{ color: "#10b981" }}>
+                  تعديل شامل — سوبر أدمن
+                  <span className="block text-xs font-normal mt-0.5" style={{ color: "rgba(16,185,129,0.6)" }}>
+                    تعديل {superEditTarget?.name ?? superEditTarget?.username}
+                  </span>
+                </DialogTitle>
+              </div>
+            </DialogHeader>
+
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Name */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgba(16,185,129,0.7)" }}>الاسم</label>
+                <input type="text" value={superEditForm.name} onChange={(e) => setSuperEditForm((f: any) => ({ ...f, name: e.target.value }))}
+                  className="w-full h-10 px-3.5 rounded-xl text-sm font-medium outline-none transition-all"
+                  style={{ background: "#111827", border: "1px solid rgba(16,185,129,0.2)", color: "#e5e7eb" }} />
+              </div>
+              {/* Username */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgba(16,185,129,0.7)" }}>اسم المستخدم (Username)</label>
+                <input type="text" value={superEditForm.username} onChange={(e) => setSuperEditForm((f: any) => ({ ...f, username: e.target.value }))}
+                  className="w-full h-10 px-3.5 rounded-xl text-sm font-medium outline-none transition-all font-mono"
+                  style={{ background: "#111827", border: "1px solid rgba(16,185,129,0.2)", color: "#e5e7eb" }} dir="ltr" />
+              </div>
+              {/* Email */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgba(16,185,129,0.7)" }}>البريد الإلكتروني</label>
+                <input type="email" value={superEditForm.email} onChange={(e) => setSuperEditForm((f: any) => ({ ...f, email: e.target.value }))}
+                  className="w-full h-10 px-3.5 rounded-xl text-sm font-medium outline-none transition-all font-mono"
+                  style={{ background: "#111827", border: "1px solid rgba(16,185,129,0.2)", color: "#e5e7eb" }} dir="ltr" />
+              </div>
+              {/* Password */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgba(16,185,129,0.7)" }}>كلمة المرور الجديدة (اتركها فارغة للإبقاء)</label>
+                <input type="password" value={superEditForm.password} onChange={(e) => setSuperEditForm((f: any) => ({ ...f, password: e.target.value }))}
+                  className="w-full h-10 px-3.5 rounded-xl text-sm font-medium outline-none transition-all"
+                  style={{ background: "#111827", border: "1px solid rgba(16,185,129,0.2)", color: "#e5e7eb" }} />
+              </div>
+              {/* Role */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgba(16,185,129,0.7)" }}>الدور (Role)</label>
+                <select value={superEditForm.role} onChange={(e) => setSuperEditForm((f: any) => ({ ...f, role: e.target.value }))}
+                  className="w-full h-10 px-3.5 rounded-xl text-sm font-medium outline-none"
+                  style={{ background: "#111827", border: "1px solid rgba(16,185,129,0.2)", color: "#e5e7eb" }}>
+                  <option value="user">مدير فرع (user)</option>
+                  <option value="admin">أدمن (admin)</option>
+                  <option value="superadmin">سوبر أدمن (superadmin)</option>
+                </select>
+              </div>
+              {/* Checkin Mode */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgba(16,185,129,0.7)" }}>وضع تسجيل الدخول</label>
+                <select value={superEditForm.checkinMode} onChange={(e) => setSuperEditForm((f: any) => ({ ...f, checkinMode: e.target.value }))}
+                  className="w-full h-10 px-3.5 rounded-xl text-sm font-medium outline-none"
+                  style={{ background: "#111827", border: "1px solid rgba(16,185,129,0.2)", color: "#e5e7eb" }}>
+                  <option value="automatic">تلقائي (Automatic)</option>
+                  <option value="manual">يدوي (Manual)</option>
+                </select>
+              </div>
+              {/* Device bind control */}
+              <div className="p-3 rounded-xl" style={{ background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)" }}>
+                <p className="text-xs font-bold mb-2" style={{ color: "#ef4444" }}>⚠️ إجراءات خطرة</p>
+                <div className="flex gap-2">
+                  {superEditTarget?.isDeviceBound && (
+                    <button onClick={() => {
+                      if (confirm(`فك ربط جهاز موبايل "${superEditTarget.name}"؟`))
+                        superUpdateMutation.mutate({ id: superEditForm.id, boundDeviceId: null });
+                    }} className="text-xs px-3 py-1.5 rounded-lg font-bold" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+                      فك ربط الموبايل
+                    </button>
+                  )}
+                  {superEditTarget?.isWebBound && (
+                    <button onClick={() => {
+                      if (confirm(`فك ربط متصفح ويب "${superEditTarget.name}"؟`))
+                        superUpdateMutation.mutate({ id: superEditForm.id, boundWebFingerprint: null });
+                    }} className="text-xs px-3 py-1.5 rounded-lg font-bold" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+                      فك ربط الويب
+                    </button>
+                  )}
+                  {!superEditTarget?.isDeviceBound && !superEditTarget?.isWebBound && (
+                    <span className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>لا يوجد ربط حالي</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="px-6 py-4" style={{ borderTop: "1px solid rgba(16,185,129,0.15)" }}>
+              <button onClick={() => setSuperEditOpen(false)}
+                className="h-9 px-4 rounded-xl text-sm font-bold"
+                style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>
+                إلغاء
+              </button>
+              <button
+                disabled={superUpdateMutation.isPending}
+                onClick={() => superUpdateMutation.mutate({
+                  id: superEditForm.id,
+                  name: superEditForm.name || undefined,
+                  username: superEditForm.username || undefined,
+                  email: superEditForm.email || undefined,
+                  role: superEditForm.role,
+                  checkinMode: superEditForm.checkinMode,
+                  ...(superEditForm.password ? { password: superEditForm.password } : {}),
+                })}
+                className="h-9 px-4 rounded-xl text-sm font-bold flex items-center gap-2 disabled:opacity-50"
+                style={{ background: "rgba(16,185,129,0.25)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
+                {superUpdateMutation.isPending && <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />}
+                حفظ التعديلات
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* ── Create Dialog ────────────────────────────────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
