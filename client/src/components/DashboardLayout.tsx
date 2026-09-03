@@ -440,8 +440,12 @@ function DashboardLayoutBody({ children }: { children: React.ReactNode }) {
     <div
       dir={isRTL ? "rtl" : "ltr"}
       style={{ fontFamily: "'Inter', -apple-system, sans-serif", background: "var(--adm-bg)", color: "var(--adm-text-1)" }}
-      className="min-h-screen flex overflow-hidden"
+      className="min-h-screen flex overflow-hidden relative"
     >
+      {/* ── Ambient Background Blobs for Glassmorphism ── */}
+      <div className="absolute top-[-15%] right-[-5%] w-[600px] h-[600px] rounded-full bg-[#5cb8c4] opacity-20 blur-[120px] pointer-events-none mix-blend-screen" />
+      <div className="absolute bottom-[-10%] left-[-10%] w-[700px] h-[700px] rounded-full bg-[#3a9aa8] opacity-15 blur-[140px] pointer-events-none mix-blend-screen" />
+
       {/* ── Sidebar ── */}
       <aside
         className="hidden md:flex flex-col w-[220px] h-screen sticky top-0 z-40 px-3 pt-6 pb-5"

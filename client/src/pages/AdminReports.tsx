@@ -495,13 +495,14 @@ export default function AdminReports() {
       <main className="px-4 md:px-8 pt-6 max-w-5xl mx-auto space-y-5">
 
         {/* Desktop Header */}
-        <div className="hidden md:flex items-center justify-between">
+        <div className="hidden md:flex adm-page-header-inner items-center justify-between !mb-0">
           <div>
-            <h1 className="text-2xl font-bold text-[var(--adm-text-1)]" style={{ fontFamily: "'Cairo', sans-serif" }}>{t("reports.title")}</h1>
-            <p className="text-[var(--adm-text-2)] text-sm mt-1">{monthLabel}</p>
+            <h1 className="text-[22px] font-bold text-[var(--adm-text-1)] tracking-tight" style={{ fontFamily: "'Cairo', sans-serif", letterSpacing: "-0.02em" }}>{t("reports.title")}</h1>
+            <p className="text-[var(--adm-text-2)] text-[13px] mt-1">{monthLabel}</p>
           </div>
           <button onClick={handleExport} disabled={exporting || visits.length === 0 || isLoading}
-            className="h-11 px-6 flex items-center gap-2 rounded-2xl text-sm font-bold text-white bg-gradient-to-br from-[#6D28D9] to-[#71717A] hover:shadow-lg hover:shadow-[#71717A]/30 hover:scale-105 transition-all duration-200 cursor-pointer disabled:opacity-40">
+            className="h-11 px-6 flex items-center gap-2 rounded-full text-sm font-bold transition-all hover:opacity-90 cursor-pointer disabled:opacity-40"
+            style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}>
             {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             {exporting ? t("reports.exporting") : t("reports.exportExcel")}
           </button>

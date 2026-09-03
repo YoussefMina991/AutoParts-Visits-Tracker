@@ -265,10 +265,43 @@ export const managerRouter = router({
 
     const locationByManager = new Map(points.map((p) => [p.managerId, p]));
 
-    return activeManagers.map((m) => ({
-      ...m,
-      location: locationByManager.get(m.id) ?? null,
-    }));
+    // ???? checkinMode ?????? (managers.id -> users.checkinMode)
+    const modeRows = await db
+      .select({ managerId: managers.id, checkinMode: users.checkinMode })
+      .from(managers)
+      .innerJoin(users, eq(managers.userId, users.id))
+      .where(inArray(managers.id, managerIds));
+    const modeByManagerId = new Map(modeRows.map((r) => [r.managerId, r.checkinMode]));
+
+    // ??????? ????: ?????? ?????? manual ?? ??????? locationLogs ???? ??? ????
+    // ?? ???? ?????? ???? ??? ???? ??? ???? ??? ??? ??? ?????? ???? ???? ??
+    const lastVisits = await db
+      .select({
+        managerId: visits.managerId,
+        latitude: visits.latitudeIn,
+        longitude: visits.longitudeIn,
+        timestamp: visits.checkInAt,
+      })
+      .from(visits)
+      .where(inArray(visits.managerId, managerIds))
+      .orderBy(desc(visits.checkInAt))
+      .limit(500);
+    const lastVisitByManager = new Map();
+    for (const v of lastVisits) {
+      if (!lastVisitByManager.has(v.managerId)) {
+        lastVisitByManager.set(v.managerId, { ...v, isManualFallback: true });
+      }
+    }
+
+    return activeManagers.map((m) => {
+      const live = locationByManager.get(m.id) ?? null;
+      if (live) {
+        return { ...m, checkinMode: modeByManagerId.get(m.id) ?? "automatic", location: live };
+      }
+      // ??? locationLogs (?????? manual): ??? ?? ???? ??? ????
+      const fallback = lastVisitByManager.get(m.id) ?? null;
+      return { ...m, checkinMode: modeByManagerId.get(m.id) ?? "automatic", location: fallback };
+    });
   }),
 
   // GET - admin route history for a specific manager on a specific date

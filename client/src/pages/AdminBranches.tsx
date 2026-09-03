@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useLang } from "@/lib/i18n";
+import { useAdminTheme } from "@/lib/adminTheme";
 import {
   Dialog,
   DialogContent,
@@ -101,6 +102,7 @@ function AdminInput({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminBranches() {
   const { t } = useLang();
+  const { theme } = useAdminTheme();
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<BranchForm>(emptyForm);
@@ -180,9 +182,9 @@ export default function AdminBranches() {
     <div className="p-5 md:p-7 space-y-6">
 
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="adm-page-header-inner">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "var(--adm-text-1)" }}>
+          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "var(--adm-text-1)", letterSpacing: "-0.02em" }}>
             {t("branches.title")}
           </h1>
           <p className="text-[13px] mt-0.5" style={{ color: "var(--adm-text-2)" }}>
@@ -471,7 +473,7 @@ export default function AdminBranches() {
       {/* ── Dialog ──────────────────────────────────────────────────────────── */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
-          className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
+          className={`p-0 overflow-hidden sm:rounded-2xl max-w-md admin-root ${theme === 'dark' ? 'dark' : ''}`}
           style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader

@@ -113,6 +113,14 @@ public class NativeGeofenceEngine {
             return;
         }
 
+        // \u2705 Manual check-in gate: user switched to manual mode (admin-controlled).
+        // Native auto check-in/out must stay fully OFF; manual visits go through the
+        // same server endpoints with the same geofence + mock-detection rules.
+        String checkinMode = capPrefs.getString("user_checkin_mode", "automatic");
+        if ("manual".equals(checkinMode)) {
+            Log.d(TAG, "Manual check-in mode active \u2014 native auto engine disabled");
+            return;
+        }
         // ── حساب نقاط الشك ──────────────────────────────────────────────────
         int suspicionScore = 0;
         List<String> mockReasons = new ArrayList<>();

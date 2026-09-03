@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { useLang } from "@/lib/i18n";
+import { useAdminTheme } from "@/lib/adminTheme";
 import {
   Dialog,
   DialogContent,
@@ -149,6 +150,7 @@ function RoleSelector({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminUsers() {
   const { t, lang } = useLang();
+  const { theme } = useAdminTheme();
   const locale = lang === "ar" ? ar : undefined;
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -206,6 +208,15 @@ export default function AdminUsers() {
       toast.success(t("users.toastUnbound"));
       refetch();
       setUnbindTarget(null);
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
+  // ?? ???? ???????? ??? ??????? (admin ??)
+  const checkinModeMutation = trpc.users.setCheckinMode.useMutation({
+    onSuccess: () => {
+      toast.success(t("users.checkinModeUpdated"));
+      refetch();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -275,9 +286,9 @@ export default function AdminUsers() {
     <div className="p-5 md:p-7 space-y-6">
 
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="adm-page-header-inner">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "var(--adm-text-1)" }}>
+          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "var(--adm-text-1)", letterSpacing: "-0.02em" }}>
             {t("users.title")}
           </h1>
           <p className="text-[13px] mt-0.5" style={{ color: "var(--adm-text-2)" }}>
@@ -420,9 +431,9 @@ export default function AdminUsers() {
                   style={{ borderBottom: "1px solid var(--adm-bg)" }}
                 >
                   {/* Avatar + info */}
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
                     <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[14px] flex-shrink-0"
+                      className="w-20 h-20 rounded-full flex items-center justify-center font-bold text-[28px] flex-shrink-0"
                       style={{
                         background: isAdminUser ? "var(--adm-accent)" : "var(--adm-bg)",
                         color: isAdminUser ? "var(--adm-accent-fg)" : "var(--adm-text-2)",
@@ -471,6 +482,28 @@ export default function AdminUsers() {
                             </span>
                             {u.isDeviceBound ? t("users.deviceBound") : t("users.deviceUnbound")}
                           </span>
+                        )}
+                        {/* ??? ???? ??????? — ???? ??????? ?? ?????? */}
+                        {!isAdminUser && (
+                          <select
+                            value={u.checkinMode ?? "automatic"}
+                            disabled={checkinModeMutation.isPending}
+                            onChange={(e) => {
+                              const mode = e.target.value === "manual" ? "manual" : "automatic";
+                              if (mode === (u.checkinMode ?? "automatic")) return;
+                              checkinModeMutation.mutate({ id: u.id, mode });
+                            }}
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full outline-none cursor-pointer"
+                            style={{
+                              background: (u.checkinMode ?? "automatic") === "manual" ? "var(--adm-amber-soft)" : "var(--adm-blue-soft)",
+                              color: (u.checkinMode ?? "automatic") === "manual" ? "var(--adm-amber)" : "var(--adm-blue)",
+                              border: "none",
+                            }}
+                            title={t("users.checkinModeLabel")}
+                          >
+                            <option value="automatic">{t("users.checkinModeAutomatic")}</option>
+                            <option value="manual">{t("users.checkinModeManual")}</option>
+                          </select>
                         )}
                       </div>
                       <div className="flex items-center gap-3 flex-wrap">
@@ -548,7 +581,7 @@ export default function AdminUsers() {
       {/* ── Create Dialog ────────────────────────────────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent
-          className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
+          className={`p-0 overflow-hidden sm:rounded-2xl max-w-md admin-root ${theme === 'dark' ? 'dark' : ''}`}
           style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
@@ -687,7 +720,7 @@ export default function AdminUsers() {
       {/* ── Edit Dialog ──────────────────────────────────────────────────────── */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent
-          className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
+          className={`p-0 overflow-hidden sm:rounded-2xl max-w-md admin-root ${theme === 'dark' ? 'dark' : ''}`}
           style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
@@ -815,7 +848,7 @@ export default function AdminUsers() {
       {/* ── Delete Confirm ───────────────────────────────────────────────────── */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent
-          className="p-0 overflow-hidden sm:rounded-2xl max-w-sm"
+          className={`p-0 overflow-hidden sm:rounded-2xl max-w-sm admin-root ${theme === 'dark' ? 'dark' : ''}`}
           style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
@@ -847,7 +880,7 @@ export default function AdminUsers() {
             </div>
           </DialogHeader>
 
-          <div className="px-6 py-5">
+          <div className="px-6 py-5 space-y-4">
             <p className="text-[13px] leading-relaxed" style={{ color: "var(--adm-text-2)" }}>
               {t("users.deleteBody1")}{" "}
               <strong style={{ color: "var(--adm-text-1)" }}>{deleteTarget?.name}</strong>{" "}
@@ -890,7 +923,7 @@ export default function AdminUsers() {
       {/* ── 🔓 Unbind Device Dialog ─────────────────────────────────────────── */}
       <Dialog open={!!unbindTarget} onOpenChange={(open) => !open && setUnbindTarget(null)}>
         <DialogContent
-          className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
+          className={`p-0 overflow-hidden sm:rounded-2xl max-w-md admin-root ${theme === 'dark' ? 'dark' : ''}`}
           style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
@@ -918,7 +951,7 @@ export default function AdminUsers() {
             </div>
           </DialogHeader>
 
-          <div className="px-6 py-5">
+          <div className="px-6 py-5 space-y-4">
             <p className="text-[13px] leading-relaxed" style={{ color: "var(--adm-text-2)" }}>
               {t("users.unbindBody1")}{" "}
               <strong style={{ color: "var(--adm-text-1)" }}>{unbindTarget?.name}</strong>.

@@ -31,6 +31,7 @@
 
 import { useEffect, useRef, useCallback, useState } from "react";
 import { Capacitor } from "@capacitor/core";
+import { useAuth } from "../_core/hooks/useAuth";
 import { App } from "@capacitor/app";
 import { Preferences } from "@capacitor/preferences";
 import { trpc } from "@/lib/trpc";
@@ -156,6 +157,12 @@ export function useGeofence() {
     trpc.visit.myHistory.useQuery({ limit: 1, offset: 0 });
 
   const checkInMutation = trpc.visit.checkIn.useMutation();
+
+  // ?? ???? ???????? (checkinMode) — ?? ????? ?? ???? ???????
+  const { user: authUser } = useAuth();
+  const checkinMode = authUser?.checkinMode ?? "automatic";
+  const autoCheckinEnabledRef = useRef(checkinMode === "automatic");
+  autoCheckinEnabledRef.current = checkinMode === "automatic";
   const checkOutMutation = trpc.visit.checkOut.useMutation();
   const syncOfflineMutation = trpc.visit.syncOfflineData.useMutation();
   const syncVisitsMutation = trpc.visit.syncOfflineVisits.useMutation();
@@ -215,8 +222,13 @@ export function useGeofence() {
         key: "api_url",
         value: SERVER_BASE_URL,
       });
+      // \u2705 keep the native engine aware of the user's check-in mode
+      Preferences.set({
+        key: "user_checkin_mode",
+        value: checkinMode,
+      });
     }
-  }, [branches]);
+  }, [branches, checkinMode]);
 
   // Sync active_branch_id for NativeGeofenceEngine
   useEffect(() => {
@@ -412,6 +424,8 @@ export function useGeofence() {
       accuracy: typeof accuracy === "number" ? accuracy : undefined,
       isMocked: detectedMock,
     });
+    // ?? ???? manual: ?? ???? ??? ?????? ??? locationLogs ?? ?? ??? ????? ???/???
+    if (!autoCheckinEnabledRef.current) return;
     if (historyLoadingRef.current) return;
 
     // 1. احفظ نقطة الـ GPS في الـ queue
@@ -613,6 +627,8 @@ export function useGeofence() {
   // عشان نقاط التتبع (breadcrumbs) توصل للتتبع اللحظي عند الأدمن
   useEffect(() => {
     if (!branchesLoaded) return;
+    // \u2705 react to mode changes without app restart (re-run watcher setup)
+    if (!watcherStartedRef.current) { /* first run */ } else { watcherStartedRef.current = false; }
     // لا تُنشئ watcher ثاني لو الأول شغّال
     if (watcherStartedRef.current) return;
     watcherStartedRef.current = true;
@@ -629,6 +645,14 @@ export function useGeofence() {
           // Dynamic import — only runs on native Android/iOS.
           const bgGeoModule = "@capacitor-community/background-geolocation";
           const { BackgroundGeolocation } = await import(/* @vite-ignore */ bgGeoModule);
+
+          if (cancelled) return;
+          // ?? ???? manual: ?? ?? ??? ??????? ??????? — ??? GPS ??????? ??? ???????? ???
+          if (!autoCheckinEnabledRef.current) {
+            console.log("[Geofence] Manual check-in mode: skipping background watcher, using foreground-only GPS");
+            await setupWebGeolocation();
+            return;
+          }
 
           if (cancelled) return; // اتقفلنا ونا بنجهز — متضيفش حاجة
 

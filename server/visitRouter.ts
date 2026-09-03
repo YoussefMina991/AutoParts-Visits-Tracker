@@ -228,6 +228,14 @@ export const visitRouter = router({
           .where(and(eq(visits.managerId, manager.id), eq(visits.status, "checked_in"))).limit(1);
         if (existingVisits.length > 0) throw new Error("Already checked into a branch. Please check out first.");
 
+      // \u2705 Manual mode enforcement: the user's app-level auto engine is expected to be off,
+      // but any client could still call this endpoint without geofence/sensor context.
+      const meRow = await db.select({ checkinMode: users.checkinMode }).from(users)
+          .where(eq(users.id, ctx.user!.id)).limit(1);
+        if (meRow[0]?.checkinMode === "manual" && input.visitType === "branch") {
+          throw new Error("MANUAL_MODE_BLOCKED");
+        }
+
       let branch: BranchRow | undefined;
       
       if (input.visitType === "branch" || input.branchId) {
@@ -319,6 +327,13 @@ export const visitRouter = router({
       const managerResult = await db.select().from(managers).where(eq(managers.userId, ctx.user!.id)).limit(1);
       if (!managerResult[0]) throw new Error("Manager profile not found");
       const manager = managerResult[0];
+
+      // \u2705 Manual mode: native auto check-out is disabled
+      const coModeRow = await db.select({ checkinMode: users.checkinMode }).from(users)
+          .where(eq(users.id, ctx.user!.id)).limit(1);
+        if (coModeRow[0]?.checkinMode === "manual") {
+          throw new Error("MANUAL_MODE_BLOCKED");
+        }
 
       // Find the active check-in for this specific branch
       const activeVisit = await db.select({

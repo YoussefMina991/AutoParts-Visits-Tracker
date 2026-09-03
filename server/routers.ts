@@ -128,6 +128,20 @@ export const appRouter = router({
         console.log(`[Auth] Admin ${ctx.user?.username} unbound device for user ${existing.username}`);
         return { success: true };
       }),
+
+    // ??? ???? ??????? ??? ??????? (admin ??) — automatic ?? manual
+    setCheckinMode: adminProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        mode: z.enum(["automatic", "manual"]),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const existing = await db.getUserById(input.id);
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "???????? ?? ???? ?????" });
+        await db.updateUser(input.id, { checkinMode: input.mode });
+        console.log("[Auth] Admin " + (ctx.user?.username ?? "?") + " set checkinMode=" + input.mode + " for user " + existing.username);
+        return { success: true, checkinMode: input.mode };
+      }),
   }),
 
   branch: branchRouter,

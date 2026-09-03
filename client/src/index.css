@@ -855,3 +855,426 @@
 .admin-root .adm-icon-btn:hover {
   background: var(--adm-bg);
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   GLASSMORPHISM GLOBAL DESIGN SYSTEM — All Admin Pages
+   All rules scoped to .admin-root to avoid leaking to manager app
+═══════════════════════════════════════════════════════════════ */
+
+/* ── CSS animations ───────────────────────────────────────────── */
+@keyframes adm-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes adm-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Sidebar glass ────────────────────────────────────────────── */
+.admin-root aside {
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.92) 0%,
+    rgba(220,247,250,0.82) 100%) !important;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-inline-end: 1px solid rgba(92,184,196,0.14) !important;
+  box-shadow: 4px 0 24px rgba(92,184,196,0.06);
+}
+.admin-root.dark aside {
+  background: linear-gradient(180deg,
+    rgba(18,18,21,0.96) 0%,
+    rgba(8,35,38,0.90) 100%) !important;
+  border-inline-end-color: rgba(92,184,196,0.12) !important;
+  box-shadow: 4px 0 24px rgba(0,0,0,0.35);
+}
+
+/* Active nav item → teal gradient */
+.admin-root aside a[style*="background: var(--adm-accent)"],
+.admin-root aside a[style*="background:var(--adm-accent)"] {
+  background: linear-gradient(135deg, #5cb8c4 0%, #3a9aa8 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(92,184,196,0.30);
+}
+
+/* Nav group label */
+.admin-root aside nav p {
+  letter-spacing: 0.09em;
+  color: rgba(92,184,196,0.65) !important;
+}
+
+/* Logout button */
+.admin-root aside button:last-child:hover {
+  background: rgba(220,38,38,0.10) !important;
+  color: #dc2626 !important;
+}
+
+/* ── Top bar glass ────────────────────────────────────────────── */
+.admin-root header {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.88) 0%,
+    rgba(220,247,250,0.70) 100%) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(92,184,196,0.12) !important;
+  box-shadow: 0 2px 12px rgba(92,184,196,0.06);
+}
+.admin-root.dark header {
+  background: linear-gradient(90deg,
+    rgba(18,18,21,0.94) 0%,
+    rgba(8,30,34,0.85) 100%) !important;
+  border-bottom-color: rgba(92,184,196,0.10) !important;
+}
+
+/* Search bar in topbar */
+.admin-root header input[type="text"] {
+  background: rgba(92,184,196,0.07) !important;
+  border: 1px solid rgba(92,184,196,0.15) !important;
+  border-radius: 999px !important;
+  transition: border-color 0.18s, background 0.18s;
+}
+.admin-root header input[type="text"]:focus {
+  background: rgba(255,255,255,0.90) !important;
+  border-color: #5cb8c4 !important;
+  outline: none;
+}
+.admin-root.dark header input[type="text"] {
+  background: rgba(92,184,196,0.06) !important;
+}
+.admin-root.dark header input[type="text"]:focus {
+  background: rgba(24,24,27,0.95) !important;
+}
+
+/* Avatar bubble in topbar */
+.admin-root header > div > div > div:last-child {
+  background: linear-gradient(135deg, #5cb8c4 0%, #3a9aa8 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(92,184,196,0.30);
+}
+
+/* Main content card wrapper (rounded-[24px]) */
+.admin-root > div > div > div[style*="border-radius: 24px"],
+.admin-root > div > div > div[style*="borderRadius: 24"] {
+  box-shadow: 0 8px 40px rgba(92,184,196,0.08), 0 1px 8px rgba(92,184,196,0.06) !important;
+}
+
+/* ── KPI Cards ────────────────────────────────────────────────── */
+.admin-root .kpi-card,
+.admin-root [class*="grid"] > div[style*="border-radius: 16"],
+.admin-root [class*="grid"] > div[style*="borderRadius: 16"],
+.admin-root [class*="grid"] > div.rounded-2xl {
+  background: linear-gradient(145deg,
+    rgba(255,255,255,0.78) 0%,
+    rgba(186,237,240,0.40) 100%) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.60) !important;
+  box-shadow: 0 4px 20px rgba(92,184,196,0.08), inset 0 1px 0 rgba(255,255,255,0.80) !important;
+  border-radius: 18px !important;
+  transition: transform 0.20s ease, box-shadow 0.20s ease;
+  animation: adm-fade-up 0.35s ease both;
+}
+.admin-root.dark [class*="grid"] > div[style*="border-radius: 16"],
+.admin-root.dark [class*="grid"] > div[style*="borderRadius: 16"],
+.admin-root.dark [class*="grid"] > div.rounded-2xl {
+  background: linear-gradient(145deg,
+    rgba(24,24,27,0.85) 0%,
+    rgba(10,42,46,0.65) 100%) !important;
+  border-color: rgba(92,184,196,0.14) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.40), inset 0 1px 0 rgba(92,184,196,0.08) !important;
+}
+.admin-root [class*="grid"] > div[style*="border-radius: 16"]:hover,
+.admin-root [class*="grid"] > div[style*="borderRadius: 16"]:hover,
+.admin-root [class*="grid"] > div.rounded-2xl:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 28px rgba(92,184,196,0.14), inset 0 1px 0 rgba(255,255,255,0.90) !important;
+}
+
+/* ── Data List/Table Card ─────────────────────────────────────── */
+.admin-root div[style*="border-radius: 16"][style*="overflow: hidden"],
+.admin-root div[style*="borderRadius: 16"][style*="overflow: hidden"],
+.admin-root div.rounded-2xl.overflow-hidden.border {
+  background: linear-gradient(145deg,
+    rgba(255,255,255,0.76) 0%,
+    rgba(186,237,240,0.30) 100%) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.60) !important;
+  box-shadow: 0 4px 24px rgba(92,184,196,0.08), inset 0 1px 0 rgba(255,255,255,0.80) !important;
+  border-radius: 20px !important;
+  animation: adm-fade-up 0.40s ease both;
+}
+.admin-root.dark div[style*="border-radius: 16"][style*="overflow: hidden"],
+.admin-root.dark div[style*="borderRadius: 16"][style*="overflow: hidden"],
+.admin-root.dark div.rounded-2xl.overflow-hidden.border {
+  background: linear-gradient(145deg,
+    rgba(24,24,27,0.88) 0%,
+    rgba(10,42,46,0.60) 100%) !important;
+  border-color: rgba(92,184,196,0.14) !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.40), inset 0 1px 0 rgba(92,184,196,0.08) !important;
+}
+
+/* ── Floating List Rows ── */
+.admin-root [class*="hover:bg-[var(--adm-chip)]"] {
+  background: linear-gradient(145deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.60) 100%) !important;
+  border: 1px solid rgba(255,255,255,0.6) !important;
+  border-radius: 16px !important;
+  margin: 10px 16px !important;
+  box-shadow: 0 2px 10px rgba(92,184,196,0.04) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+}
+.admin-root.dark [class*="hover:bg-[var(--adm-chip)]"] {
+  background: linear-gradient(145deg, rgba(24,24,27,0.8) 0%, rgba(10,42,46,0.5) 100%) !important;
+  border-color: rgba(92,184,196,0.1) !important;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2) !important;
+}
+.admin-root [class*="hover:bg-[var(--adm-chip)]"]:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px rgba(92,184,196,0.12) !important;
+  border-color: rgba(92,184,196,0.3) !important;
+}
+.admin-root.dark [class*="hover:bg-[var(--adm-chip)]"]:hover {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
+  border-color: rgba(92,184,196,0.2) !important;
+}
+
+/* Remove original flat borders on rows and lists */
+.admin-root div[style*="borderBottom: \"1px solid var(--adm-bg)\""],
+.admin-root div[style*="border-bottom: \"1px solid var(--adm-bg)\""] {
+  border-bottom: none !important;
+}
+
+/* ── Empty States ── */
+.admin-root .py-16.flex.flex-col.items-center {
+  background: linear-gradient(145deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.1) 100%) !important;
+  border-radius: 16px !important;
+  margin: 16px !important;
+  border: 1px dashed rgba(92,184,196,0.3) !important;
+}
+.admin-root.dark .py-16.flex.flex-col.items-center {
+  background: linear-gradient(145deg, rgba(24,24,27,0.4) 0%, rgba(24,24,27,0.1) 100%) !important;
+}
+
+/* ── Page-level headings (p-5 / p-7 space-y-6 pages) ─────────── */
+/* Adds a glass pill header feel for the h1+subtitle area */
+.admin-root .adm-page-header-inner {
+  background: linear-gradient(135deg,
+    rgba(255,255,255,0.80) 0%,
+    rgba(220,247,250,0.55) 100%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.55);
+  border-radius: 18px;
+  padding: 16px 20px;
+  box-shadow: 0 2px 12px rgba(92,184,196,0.07);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  animation: adm-fade-up 0.30s ease both;
+}
+.admin-root.dark .adm-page-header-inner {
+  background: linear-gradient(135deg,
+    rgba(24,24,27,0.88) 0%,
+    rgba(10,42,46,0.65) 100%);
+  border-color: rgba(92,184,196,0.14);
+}
+
+/* Primary action button → teal gradient */
+.admin-root button[style*="background: var(--adm-accent)"],
+.admin-root button[style*="background:var(--adm-accent)"] {
+  background: linear-gradient(135deg, #5cb8c4 0%, #3a9aa8 100%) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 14px rgba(92,184,196,0.35) !important;
+  transition: box-shadow 0.18s ease, transform 0.18s ease !important;
+}
+.admin-root button[style*="background: var(--adm-accent)"]:hover,
+.admin-root button[style*="background:var(--adm-accent)"]:hover {
+  box-shadow: 0 6px 20px rgba(92,184,196,0.50) !important;
+  transform: translateY(-1px);
+}
+
+/* Ghost / bordered buttons → pill glass */
+.admin-root button[style*="border: \"1px solid var(--adm-border)\""],
+.admin-root button[class*="border"][class*="rounded-xl"] {
+  border-radius: 999px !important;
+  transition: background 0.15s ease, border-color 0.15s ease !important;
+}
+.admin-root button[style*="border: \"1px solid var(--adm-border)\""]:hover {
+  background: rgba(92,184,196,0.08) !important;
+  border-color: rgba(92,184,196,0.35) !important;
+}
+
+/* Icon-only action buttons */
+.admin-root button[class*="rounded-xl"][class*="w-8"] {
+  border-radius: 12px !important;
+  transition: background 0.15s ease !important;
+}
+
+/* ── Form inputs (dialogs & filters) → glass inputs ─────────────────── */
+.admin-root input[type="text"],
+.admin-root input[type="date"],
+.admin-root input[type="number"],
+.admin-root input[type="password"],
+.admin-root select,
+.admin-root textarea {
+  background: linear-gradient(180deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.8) 100%) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(255,255,255,0.8) !important;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.02), 0 2px 8px rgba(92,184,196,0.04) !important;
+  transition: all 0.2s ease !important;
+}
+.admin-root.dark input[type="text"],
+.admin-root.dark input[type="date"],
+.admin-root.dark input[type="number"],
+.admin-root.dark input[type="password"],
+.admin-root.dark select,
+.admin-root.dark textarea {
+  background: linear-gradient(180deg, rgba(24,24,27,0.5) 0%, rgba(24,24,27,0.8) 100%) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.2) !important;
+}
+
+.admin-root input:focus,
+.admin-root select:focus,
+.admin-root textarea:focus {
+  background: rgba(255,255,255,0.95) !important;
+  border-color: #5cb8c4 !important;
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(92,184,196,0.18), inset 0 1px 2px rgba(0,0,0,0.02) !important;
+}
+.admin-root.dark input:focus,
+.admin-root.dark select:focus,
+.admin-root.dark textarea:focus {
+  background: rgba(24,24,27,0.98) !important;
+}
+
+/* Ensure topbar search doesn't get overridden too harshly */
+.admin-root header input[type="text"] {
+  background: rgba(92,184,196,0.07) !important;
+  border-radius: 999px !important;
+}
+
+/* Dialog content → glass panel */
+.admin-root [role="dialog"] > div,
+.admin-root [data-radix-dialog-content] {
+  background: linear-gradient(145deg,
+    rgba(255,255,255,0.92) 0%,
+    rgba(220,247,250,0.70) 100%) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255,255,255,0.65) !important;
+  box-shadow: 0 20px 60px rgba(92,184,196,0.18), 0 4px 16px rgba(92,184,196,0.10) !important;
+}
+.admin-root.dark [role="dialog"] > div,
+.admin-root.dark [data-radix-dialog-content] {
+  background: linear-gradient(145deg,
+    rgba(24,24,27,0.96) 0%,
+    rgba(10,42,46,0.85) 100%) !important;
+  border-color: rgba(92,184,196,0.18) !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.55) !important;
+}
+
+/* Dialog header icon circle → teal */
+.admin-root [role="dialog"] .w-8.h-8.rounded-xl[style*="background: var(--adm-accent)"],
+.admin-root [role="dialog"] .w-8.h-8.rounded-xl[style*="background:var(--adm-accent)"] {
+  background: linear-gradient(135deg, #5cb8c4 0%, #3a9aa8 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(92,184,196,0.30) !important;
+}
+
+/* ── Branch / Manager icon circle in list ─────────────────────── */
+.admin-root .w-8.h-8.rounded-xl[style*="background: var(--adm-bg)"],
+.admin-root .w-9.h-9.rounded-full[style*="background: var(--adm-bg)"] {
+  background: rgba(92,184,196,0.12) !important;
+}
+
+/* ── Status chips ─────────────────────────────────────────────── */
+/* Active (green) stays green — just make pill rounder */
+.admin-root span[class*="rounded-full"][style*="green"] {
+  border-radius: 999px !important;
+}
+.admin-root span[class*="rounded-full"][style*="red"] {
+  border-radius: 999px !important;
+}
+
+/* ── Live tracking mode toggle ────────────────────────────────── */
+/* The mode tab strip */
+.admin-root [style*="background: var(--adm-bg)"][style*="borderRadius: 12"] button {
+  border-radius: 8px !important;
+  transition: all 0.18s ease !important;
+}
+.admin-root [style*="background: var(--adm-bg)"][style*="borderRadius: 12"] button[style*="background: var(--adm-accent)"] {
+  background: linear-gradient(135deg, #5cb8c4 0%, #3a9aa8 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 8px rgba(92,184,196,0.28) !important;
+}
+
+/* ── Reports filters row ──────────────────────────────────────── */
+.admin-root input[type="date"],
+.admin-root input[type="text"] {
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+/* ── Bottom mobile nav glass ──────────────────────────────────── */
+.admin-root nav[class*="fixed bottom-0"] {
+  background: linear-gradient(0deg,
+    rgba(255,255,255,0.96) 0%,
+    rgba(240,253,254,0.92) 100%) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-top: 1px solid rgba(92,184,196,0.15) !important;
+  box-shadow: 0 -4px 20px rgba(92,184,196,0.08) !important;
+}
+.admin-root.dark nav[class*="fixed bottom-0"] {
+  background: linear-gradient(0deg,
+    rgba(18,18,21,0.98) 0%,
+    rgba(12,32,35,0.94) 100%) !important;
+}
+.admin-root nav[class*="fixed bottom-0"] a.text-\[var\(--adm-text-1\)\] {
+  color: #5cb8c4 !important;
+}
+
+/* ── Notification dropdown glass ─────────────────────────────── */
+.admin-root [style*="borderRadius: 16"][style*="boxShadow"] {
+  background: linear-gradient(145deg,
+    rgba(255,255,255,0.95) 0%,
+    rgba(220,247,250,0.80) 100%) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255,255,255,0.70) !important;
+  box-shadow: 0 12px 40px rgba(92,184,196,0.15), 0 2px 8px rgba(92,184,196,0.08) !important;
+}
+.admin-root.dark [style*="borderRadius: 16"][style*="boxShadow"] {
+  background: linear-gradient(145deg,
+    rgba(24,24,27,0.96) 0%,
+    rgba(10,40,45,0.90) 100%) !important;
+  border-color: rgba(92,184,196,0.16) !important;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.50) !important;
+}
+
+/* ── Scrollbar hide on overflow containers ────────────────────── */
+.admin-root [style*="scrollbarWidth: \"none\""],
+.admin-root [style*="scrollbar-width: none"] {
+  scrollbar-width: none !important;
+}
+.admin-root [style*="scrollbarWidth: \"none\""]::-webkit-scrollbar,
+.admin-root [style*="scrollbar-width: none"]::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Section title accent bar (used in AdminDashboard too) ───── */
+.admin-root .adm-section-title::before {
+  background: linear-gradient(180deg, #5cb8c4, #3a9aa8) !important;
+}
+
+/* ── Stagger animation for page sections ─────────────────────── */
+.admin-root .space-y-6 > *:nth-child(1) { animation: adm-fade-up 0.28s ease both; }
+.admin-root .space-y-6 > *:nth-child(2) { animation: adm-fade-up 0.36s ease both; }
+.admin-root .space-y-6 > *:nth-child(3) { animation: adm-fade-up 0.44s ease both; }
+.admin-root .space-y-6 > *:nth-child(4) { animation: adm-fade-up 0.52s ease both; }

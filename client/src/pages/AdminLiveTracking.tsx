@@ -32,6 +32,9 @@ export default function AdminLiveTracking() {
 
   const withLoc    = managers.filter((m) => m.location !== null);
   const withoutLoc = managers.filter((m) => m.location === null);
+  // ?????? ?????? manual ?? ?????? locationLogs — ???? ????? ??? ?????? ?????
+  const noLocationLabel = (m: any) =>
+    m.checkinMode === "manual" ? t("live.manualFallbackNote") : t("live.noLocationData");
 
   // ── shared styles ──
   const chip = (active: boolean): React.CSSProperties => ({
@@ -56,13 +59,10 @@ export default function AdminLiveTracking() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div
-        className="flex items-center justify-between px-5 py-4 shrink-0"
-        style={{ borderBottom: "1px solid var(--adm-bg)" }}
-      >
+      <div className="adm-page-header-inner mx-5 mt-5 shrink-0">
         <div>
-          <h1 className="text-[20px] font-bold text-[var(--adm-text-1)]">{t("live.title")}</h1>
-          <p className="text-[12px] text-[var(--adm-text-3)] mt-0.5 font-medium">
+          <h1 className="text-[22px] font-bold text-[var(--adm-text-1)] tracking-tight" style={{ letterSpacing: "-0.02em" }}>{t("live.title")}</h1>
+          <p className="text-[13px] text-[var(--adm-text-3)] mt-0.5 font-medium">
             {t("live.activeOffline", { a: withLoc.length, b: withoutLoc.length })}
           </p>
         </div>
@@ -133,7 +133,7 @@ export default function AdminLiveTracking() {
                       lat={parseFloat(m.location!.latitude)}
                       lng={parseFloat(m.location!.longitude)}
                       label={m.userName || t("live.unnamedManager")}
-                      color={selectedManager === m.id ? "#18181B" : "#22C55E"}
+                      color={selectedManager === m.id ? "#00E5FF" : "#22C55E"}
                       popupContent={`${m.userName} — ${formatDistanceToNow(
                         new Date(m.location!.timestamp),
                         { addSuffix: true, locale }
@@ -152,7 +152,7 @@ export default function AdminLiveTracking() {
                       positions={routeHistory.map(
                         (p) => [parseFloat(p.latitude), parseFloat(p.longitude)] as [number, number]
                       )}
-                      color="#18181B"
+                      color="#FFB020"
                       weight={4}
                     />
                   )}
@@ -166,7 +166,7 @@ export default function AdminLiveTracking() {
               <Overlay icon="touch_app" title={t("live.selectManager")} sub={t("live.chooseFromList")} />
             )}
             {mode === "history" && selectedManager && historyLoading && (
-              <div className="absolute inset-0 z-[400] flex items-center justify-center bg-[var(--adm-surface)]/80 backdrop-blur-sm">
+              <div className="absolute inset-0 z-[1100] flex items-center justify-center bg-[var(--adm-surface)]/80 backdrop-blur-sm">
                 <div className="animate-spin w-7 h-7 border-2 border-[var(--adm-border)] border-t-[var(--adm-text-1)] rounded-full" />
               </div>
             )}
@@ -242,7 +242,7 @@ export default function AdminLiveTracking() {
                               addSuffix: true,
                               locale,
                             })
-                          : t("live.noLocationData")}
+                          : noLocationLabel(m)}
                       </p>
                     </div>
                   );
@@ -268,7 +268,7 @@ export default function AdminLiveTracking() {
 // ─── Overlay helper ───────────────────────────────────────────────────────────
 function Overlay({ icon, title, sub }: { icon: string; title: string; sub: string }) {
   return (
-    <div className="absolute inset-0 z-[400] flex flex-col items-center justify-center bg-[var(--adm-surface)]/80 backdrop-blur-sm">
+    <div className="absolute inset-0 z-[1100] flex flex-col items-center justify-center bg-[var(--adm-surface)]/80 backdrop-blur-sm">
       <span
         className="material-symbols-outlined text-[var(--adm-border)] mb-3"
         style={{ fontSize: 44, fontVariationSettings: "'FILL' 1" }}

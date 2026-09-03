@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { SERVER_BASE_URL } from "@/lib/config";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { Loader2 } from "lucide-react";
@@ -24,8 +25,24 @@ export default function VisitHistory() {
     limit: PAGE_SIZE,
     offset,
   });
-  const allVisits = (visitsData?.items ?? []) as any[];
   const total = visitsData?.total ?? 0;
+
+  // نراكم الصفحات بدل ما نستبدلها — عشان "تحميل المزيد" يضيف صفوف مش يمسحها
+  const [allVisits, setAllVisits] = useState<any[]>([]);
+  useEffect(() => {
+    const fresh = (visitsData?.items ?? []) as any[];
+    if (fresh.length === 0) return;
+    if (offset === 0) {
+      setAllVisits(fresh);
+      return;
+    }
+    setAllVisits((prev) => {
+      const seen = new Set(prev.map((v) => v.id));
+      return [...prev, ...fresh.filter((v) => !seen.has(v.id))];
+    });
+  }, [visitsData, offset]);
+
+  const hasMore = allVisits.length < total;
 
   // ── فلترة حسب التبويب (شغالة فعلاً) ─────────────────────────────────────────
   const visits =
@@ -34,8 +51,6 @@ export default function VisitHistory() {
       : tab === "done"
         ? allVisits.filter((v) => v.status === "checked_out")
         : allVisits;
-
-  const hasMore = offset + PAGE_SIZE < total;
 
   return (
     <>
@@ -151,9 +166,9 @@ export default function VisitHistory() {
             <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#0fa5f8' }}>badge</span>
             {photoUrl ? (
               <img
-                src={photoUrl.startsWith('http') ? photoUrl : `${import.meta.env.VITE_API_URL || ''}${photoUrl}`}
+                src={photoUrl.startsWith('http') ? photoUrl : `${SERVER_BASE_URL}${photoUrl}`}
                 alt="صورتي"
-                onClick={() => setPreviewPhoto(photoUrl.startsWith('http') ? photoUrl : `${import.meta.env.VITE_API_URL || ''}${photoUrl}`)}
+                onClick={() => setPreviewPhoto(photoUrl.startsWith('http') ? photoUrl : `${SERVER_BASE_URL}${photoUrl}`)}
                 className="visit-photo-thumb"
                 style={{ width: 52, height: 52 }}
               />
@@ -181,7 +196,7 @@ export default function VisitHistory() {
         {/* ── التبويبات الشغالة فعلاً ── */}
         <div className="tabs">
           <button className={`tab ${tab === "all" ? "active" : ""}`} onClick={() => setTab("all")}>
-            الكل ({allVisits.length})
+            الكل ({total})
           </button>
           <button className={`tab ${tab === "active" ? "active" : ""}`} onClick={() => setTab("active")}>
             جارية ({allVisits.filter((v) => v.status === "checked_in").length})
@@ -214,7 +229,7 @@ export default function VisitHistory() {
               const photoFull = visit.photoUrl
                 ? visit.photoUrl.startsWith("http")
                   ? visit.photoUrl
-                  : `${import.meta.env.VITE_API_URL || ""}${visit.photoUrl}`
+                  : `${SERVER_BASE_URL}${visit.photoUrl}`
                 : null;
 
               return (
@@ -277,7 +292,7 @@ export default function VisitHistory() {
                 onClick={() => setOffset(offset + PAGE_SIZE)}
                 disabled={isLoading}
               >
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : `تحميل المزيد (${total - offset - PAGE_SIZE} متبقية)`}
+                {isLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : `تحميل المزيد (${total - allVisits.length} متبقية)`}
               </button>
             )}
           </>

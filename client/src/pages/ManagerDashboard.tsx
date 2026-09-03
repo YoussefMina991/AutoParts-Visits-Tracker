@@ -2,6 +2,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
+import { SERVER_BASE_URL } from "@/lib/config";
 
 // ── تحية حسب الوقت الفعلي بالعربي ─────────────────────────────────────────────
 function getGreeting(): string {
@@ -267,15 +268,15 @@ export default function ManagerDashboard() {
         <div className="dashboard-glow" />
 
         <header className="header-section fade-up" style={{ animationDelay: '0s', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', textAlign: 'center', width: '100%' }}>
             {photoUrl ? (
               <img
-                src={photoUrl.startsWith('http') ? photoUrl : `${import.meta.env.VITE_API_URL || ''}${photoUrl}`}
+                src={photoUrl.startsWith('http') ? photoUrl : `${SERVER_BASE_URL}${photoUrl}`}
                 alt="Profile"
-                style={{ width: '56px', height: '56px', borderRadius: '50%', border: '2px solid rgba(15,165,248,0.5)', objectFit: 'cover' }}
+                style={{ width: '100px', height: '100px', borderRadius: '50%', border: '2px solid rgba(15,165,248,0.5)', objectFit: 'cover' }}
               />
             ) : (
-              <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(15,165,248,0.1)', border: '2px solid rgba(15,165,248,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0fa5f8', fontSize: '24px', fontWeight: 'bold' }}>
+              <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: 'rgba(15,165,248,0.1)', border: '2px solid rgba(15,165,248,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0fa5f8', fontSize: '40px', fontWeight: 'bold' }}>
                 {user?.username?.charAt(0).toUpperCase() || "U"}
               </div>
             )}

@@ -70,6 +70,9 @@ interface MapViewProps {
   initialZoom?: number;
   flyTo?: MapCenter | null;
   flyToZoom?: number;
+  /** Tile source — defaults to free Carto Dark Matter (no API key) */
+  tileUrl?: string;
+  tileSubdomains?: string;
   children?: ReactNode;
 }
 
@@ -79,6 +82,8 @@ export function MapView({
   initialZoom = 12,
   flyTo = null,
   flyToZoom,
+  tileUrl = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  tileSubdomains = "abcd",
   children,
 }: MapViewProps) {
   return (
@@ -86,20 +91,22 @@ export function MapView({
       center={[initialCenter.lat, initialCenter.lng]}
       zoom={initialZoom}
       className={cn("w-full h-[500px]", className)}
-      style={{ background: "#0e1417" }}
+      // isolation:isolate + zIndex:0 contain leaflet panes (z-index up to 1000)
+      // so app-level dialogs / nav / overlays (z-50+) always stack above the map
+      style={{ background: "#0e1417", isolation: "isolate", zIndex: 0 }}
       zoomControl={true}
       attributionControl={false}
     >
       {/* OpenStreetMap dark-style tiles (Carto Dark Matter — free) */}
       <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        subdomains="abcd"
+        url={tileUrl}
+        subdomains={tileSubdomains}
         maxZoom={20}
       />
       {/* Small attribution */}
       <div
         className="leaflet-control leaflet-bottom leaflet-right"
-        style={{ pointerEvents: "none" }}
+        style={{ position: "absolute", bottom: 0, right: 0, zIndex: 500, pointerEvents: "none" }}
       >
         <span style={{ fontSize: "9px", color: "#4a5568", padding: "2px 4px" }}>
           © OpenStreetMap © CARTO
@@ -120,6 +127,16 @@ interface MapMarkerProps {
   color?: string;
   popupContent?: string;
   onClick?: () => void;
+}
+
+// ─── Escape HTML (labels are interpolated raw into divIcon html) ─────────────
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 export function MapMarker({
@@ -149,10 +166,10 @@ export function MapMarker({
         cursor:pointer;
       ">
         <span style="font-size:15px;">📍</span>
-        ${label ?? ""}
+        ${escapeHtml(label ?? "")}
       </div>
     `,
-    iconAnchor: [16, 32],
+    iconAnchor: [16, 34],
   });
 
   return (

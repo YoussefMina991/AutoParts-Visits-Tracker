@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { compressImageFile, type ImageExtension } from "@/lib/imageCompression";
 import { useLang } from "@/lib/i18n";
+import { useAdminTheme } from "@/lib/adminTheme";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ function AssignBranchesDialog({
   onClose: () => void;
 }) {
   const { t } = useLang();
+  const { theme } = useAdminTheme();
   const { data: branchesList = [] } = trpc.branch.list.useQuery();
   const { data: rawCurrentBranches = [], isLoading } =
     trpc.manager.getManagerBranches.useQuery(
@@ -54,7 +56,7 @@ function AssignBranchesDialog({
 
   return (
     <DialogContent
-      className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
+      className={`p-0 overflow-hidden sm:rounded-2xl max-w-md admin-root ${theme === 'dark' ? 'dark' : ''}`}
       style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
     >
       <DialogHeader
@@ -92,7 +94,7 @@ function AssignBranchesDialog({
           <Loader2 className="w-5 h-5 animate-spin" style={{ color: "var(--adm-text-3)" }} />
         </div>
       ) : (
-        <div className="px-6 py-4 space-y-3">
+        <div className="px-6 py-5 space-y-4">
           {/* Controls */}
           <div className="flex items-center justify-between">
             <p className="text-[12px]" style={{ color: "var(--adm-text-2)" }}>
@@ -232,6 +234,7 @@ function AssignBranchesDialog({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminManagers() {
   const { t } = useLang();
+  const { theme } = useAdminTheme();
   const [createOpen, setCreateOpen] = useState(false);
   const [assignManager, setAssignManager] = useState<any>(null);
   const [editPhotoManager, setEditPhotoManager] = useState<any>(null);
@@ -322,9 +325,9 @@ export default function AdminManagers() {
     <div className="p-5 md:p-7 space-y-6">
 
       {/* ── Page Header ─────────────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="adm-page-header-inner">
         <div>
-          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "var(--adm-text-1)" }}>
+          <h1 className="text-[22px] font-bold tracking-tight" style={{ color: "var(--adm-text-1)", letterSpacing: "-0.02em" }}>
             {t("managers.title")}
           </h1>
           <p className="text-[13px] mt-0.5" style={{ color: "var(--adm-text-2)" }}>
@@ -459,16 +462,16 @@ export default function AdminManagers() {
                   style={{ borderBottom: "1px solid var(--adm-bg)" }}
                 >
                   {/* Left: avatar + info */}
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-4">
                     {m.photoUrl ? (
                       <img
                         src={m.photoUrl}
                         alt={m.userName ?? ""}
-                        style={{ width: 40, height: 40, borderRadius: 20, objectFit: "cover", flexShrink: 0, border: "1px solid var(--adm-border)" }}
+                        style={{ width: 80, height: 80, borderRadius: 40, objectFit: "cover", flexShrink: 0, border: "1px solid var(--adm-border)" }}
                       />
                     ) : (
                       <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-[14px] flex-shrink-0"
+                        className="w-20 h-20 rounded-full flex items-center justify-center font-bold text-[28px] flex-shrink-0"
                         style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}
                       >
                         {initial}
@@ -573,7 +576,7 @@ export default function AdminManagers() {
       {/* ── Create Dialog ────────────────────────────────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent
-          className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
+          className={`p-0 overflow-hidden sm:rounded-2xl max-w-md admin-root ${theme === 'dark' ? 'dark' : ''}`}
           style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
@@ -832,7 +835,7 @@ export default function AdminManagers() {
         }}
       >
         <DialogContent
-          className="p-0 overflow-hidden sm:rounded-2xl max-w-md"
+          className={`p-0 overflow-hidden sm:rounded-2xl max-w-md admin-root ${theme === 'dark' ? 'dark' : ''}`}
           style={{ background: "var(--adm-surface)", border: "1px solid var(--adm-border)" }}
         >
           <DialogHeader
@@ -865,7 +868,7 @@ export default function AdminManagers() {
             </div>
           </DialogHeader>
 
-          <div className="px-6 py-5">
+          <div className="px-6 py-5 space-y-4">
             <label
               className="flex items-center gap-3 cursor-pointer"
               style={{

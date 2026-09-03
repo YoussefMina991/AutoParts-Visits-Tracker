@@ -161,6 +161,8 @@ export default function BranchCheckIn() {
           font-family: 'Cairo', 'Inter', sans-serif;
           position: relative;
           overflow: hidden;
+          isolation: isolate;
+          z-index: 0;
         }
 
         .top-bar {
