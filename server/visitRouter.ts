@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { eq, and, gte, lte, desc, count, lt } from "drizzle-orm";
-import { router, protectedProcedure, adminProcedure } from "./_core/trpc";
+import { router, protectedProcedure, adminProcedure, superAdminProcedure } from "./_core/trpc";
 import { getDb } from "./db";
 import { visits, managers, branches, users, locationLogs } from "../drizzle/schema";
 import { storagePut } from "./storage";
@@ -754,5 +754,67 @@ export const visitRouter = router({
         })));
       }
       return { success: true, syncedLocations: input.locations.length };
+    }),
+
+  // ── 🦸‍♂️ السوبر أدمن ──────────────────────────────────────────────────────────
+  superadminUpdate: superAdminProcedure
+    .input(z.object({
+      id: z.number(),
+      managerId: z.number().optional(),
+      branchId: z.number().nullable().optional(),
+      visitType: z.enum(["branch", "external_mission"]).optional(),
+      noteType: z.enum(["general", "short_visit", "non_primary", "external_mission"]).optional(),
+      checkInAt: z.string().optional(),
+      checkOutAt: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+      status: z.enum(["checked_in", "checked_out"]).optional(),
+      isMocked: z.enum(["yes", "no"]).optional(),
+      distanceToPrevBranchKm: z.number().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const { id, ...data } = input;
+      const updateData: any = { ...data };
+      if (input.checkInAt !== undefined) updateData.checkInAt = new Date(input.checkInAt);
+      if (input.checkOutAt !== undefined) updateData.checkOutAt = input.checkOutAt ? new Date(input.checkOutAt) : null;
+      if (input.distanceToPrevBranchKm !== undefined) updateData.distanceToPrevBranchKm = input.distanceToPrevBranchKm?.toString();
+      await db.update(visits).set(updateData).where(eq(visits.id, id));
+      return { success: true };
+    }),
+
+  superadminDelete: superAdminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      await db.delete(visits).where(eq(visits.id, input.id));
+      return { success: true };
+    }),
+
+  superadminCreate: superAdminProcedure
+    .input(z.object({
+      managerId: z.number(),
+      branchId: z.number().nullable(),
+      visitType: z.enum(["branch", "external_mission"]),
+      noteType: z.enum(["general", "short_visit", "non_primary", "external_mission"]),
+      checkInAt: z.string(),
+      checkOutAt: z.string().nullable(),
+      notes: z.string().nullable(),
+      status: z.enum(["checked_in", "checked_out"]),
+      isMocked: z.enum(["yes", "no"]),
+      latitudeIn: z.string(),
+      longitudeIn: z.string(),
+    }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      
+      const updateData: any = { ...input };
+      updateData.checkInAt = new Date(input.checkInAt);
+      if (input.checkOutAt) updateData.checkOutAt = new Date(input.checkOutAt);
+
+      await db.insert(visits).values(updateData);
+      return { success: true };
     }),
 });

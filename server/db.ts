@@ -107,6 +107,10 @@ export async function listUsers() {
   return withRetry(async () => {
     const db = await getDb();
     if (!db) return [];
+    
+    // We import ne dynamically to avoid circular dependencies or just use sql
+    const { ne } = await import("drizzle-orm");
+    
     return db.select({
       id: users.id,
       username: users.username,
@@ -118,7 +122,7 @@ export async function listUsers() {
       lastSignedIn: users.lastSignedIn,
       boundDeviceId: users.boundDeviceId,
       deviceBoundAt: users.deviceBoundAt,
-    }).from(users).orderBy(users.name);
+    }).from(users).where(ne(users.role, "superadmin")).orderBy(users.name);
   });
 }
 

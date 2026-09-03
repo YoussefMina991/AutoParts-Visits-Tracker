@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eq, and, desc, gte, lt, inArray, or, sql } from "drizzle-orm";
+import { eq, and, desc, gte, lt, inArray, or, sql, ne } from "drizzle-orm";
 import { router, protectedProcedure, adminProcedure } from "./_core/trpc";
 import { getDb } from "./db";
 import { managers, managerBranches, branches, users, locationLogs, visits } from "../drizzle/schema";
@@ -25,6 +25,7 @@ export const managerRouter = router({
       })
       .from(managers)
       .leftJoin(users, eq(managers.userId, users.id))
+      .where(ne(users.role, "superadmin"))
       .orderBy(users.name);
     return result;
   }),

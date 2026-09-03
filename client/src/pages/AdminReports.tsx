@@ -6,6 +6,9 @@ import { format, startOfMonth, endOfMonth, isToday } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { useLang, type TFunc } from "@/lib/i18n";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { SuperadminVisitModal } from "@/components/SuperadminVisitModal";
+import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Visit {
@@ -191,16 +194,36 @@ function exportToExcel(
 // ─── Day Card ─────────────────────────────────────────────────────────────────
 function DayCard({ group }: { group: DayGroup }) {
   const { t, lang } = useLang();
+  const { user } = useAuth();
+  const trpcCtx = trpc.useContext();
   const locale: Locale = lang === "ar" ? ar : undefined;
   const hUnit = t("time.hourShort");
   const mUnit = t("time.minShort");
   const [expanded, setExpanded] = useState(false);
+  const [editingVisit, setEditingVisit] = useState<any | null>(null);
+  
+  const deleteMutation = trpc.visit.superadminDelete.useMutation({
+    onSuccess: () => {
+      toast.success("تم مسح الزيارة بنجاح");
+      trpcCtx.invalidate();
+    },
+    onError: (err) => {
+      toast.error(err.message || "حدث خطأ أثناء المسح");
+    }
+  });
+
   const todayFlag = isToday(new Date(group.date));
   const dayNum = format(new Date(group.date), "d");
   const dayName = format(new Date(group.date), "EEE", { locale });
 
   return (
-    <div className={`bg-[var(--adm-surface)] rounded-2xl overflow-hidden border transition-all duration-200 ${
+    <>
+      <SuperadminVisitModal 
+        visit={editingVisit}
+        open={!!editingVisit}
+        onOpenChange={(v) => !v && setEditingVisit(null)}
+      />
+      <div className={`bg-[var(--adm-surface)] rounded-2xl overflow-hidden border transition-all duration-200 ${
       group.isActive ? "border-[var(--adm-text-1)] shadow-sm" : "border-[var(--adm-border)] hover:border-[var(--adm-text-3)]"
     }`}>
       {/* Header */}
@@ -375,6 +398,32 @@ function DayCard({ group }: { group: DayGroup }) {
                           >
                             {isCheckedIn ? t("reports.statusIn") : t("reports.statusOut")}
                           </span>
+                          
+                          {/* Superadmin actions */}
+                          {user?.role === "superadmin" && (
+                            <div className="flex items-center gap-1 mt-2">
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingVisit(v);
+                                }}
+                                className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded hover:bg-emerald-500/30 transition-colors border border-emerald-500/30"
+                              >
+                                تعديل
+                              </button>
+                              <button 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm("هل أنت متأكد من مسح هذه الزيارة بالكامل؟")) {
+                                    deleteMutation.mutate({ id: v.id });
+                                  }
+                                }}
+                                className="text-xs bg-red-500/20 text-red-400 px-2 py-1 rounded hover:bg-red-500/30 transition-colors border border-red-500/30"
+                              >
+                                حذف
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -400,6 +449,7 @@ function DayCard({ group }: { group: DayGroup }) {
         </div>
       )}
     </div>
+    </>
   );
 }
 

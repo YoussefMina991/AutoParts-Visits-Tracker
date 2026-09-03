@@ -2,7 +2,7 @@ import { z } from "zod";
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, router, adminProcedure } from "./_core/trpc";
+import { publicProcedure, router, adminProcedure, superAdminProcedure } from "./_core/trpc";
 import { branchRouter } from "./branchRouter";
 import { managerRouter } from "./managerRouter";
 import { visitRouter } from "./visitRouter";
@@ -154,10 +154,41 @@ export const appRouter = router({
       }))
       .mutation(async ({ input, ctx }) => {
         const existing = await db.getUserById(input.id);
-        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "???????? ?? ???? ?????" });
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "المستخدم غير موجود" });
         await db.updateUser(input.id, { checkinMode: input.mode });
         console.log("[Auth] Admin " + (ctx.user?.username ?? "?") + " set checkinMode=" + input.mode + " for user " + existing.username);
         return { success: true, checkinMode: input.mode };
+      }),
+
+    // ── 🦸‍♂️ السوبر أدمن للتحكم الشامل في المستخدمين ────────────────────────
+    superadminUpdateUser: superAdminProcedure
+      .input(z.object({
+        id: z.number(),
+        username: z.string().min(3).max(64).optional(),
+        password: z.string().optional(),
+        name: z.string().optional(),
+        email: z.string().email().optional().or(z.literal("")),
+        role: z.enum(["user", "admin", "superadmin"]).optional(),
+        checkinMode: z.enum(["automatic", "manual"]).optional(),
+        boundDeviceId: z.string().nullable().optional(),
+        boundWebFingerprint: z.string().nullable().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { id, password, ...rest } = input;
+        const existing = await db.getUserById(id);
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "المستخدم غير موجود" });
+
+        if (rest.username && rest.username !== existing.username) {
+          const taken = await db.getUserByUsername(rest.username);
+          if (taken) throw new TRPCError({ code: "CONFLICT", message: "اسم المستخدم موجود بالفعل" });
+        }
+
+        const updateData: any = { ...rest };
+        if (rest.email === "") updateData.email = null;
+        if (password) updateData.passwordHash = await hashPassword(password);
+        
+        await db.updateUser(id, updateData);
+        return { success: true };
       }),
   }),
 
