@@ -141,6 +141,35 @@ async function startServer() {
     serveStatic(app);
   }
 
+  // ── End of Day Reset (Reset all managers to Inactive at midnight) ────────
+  function setupEndOfDayJob() {
+    const scheduleNext = () => {
+      const now = new Date();
+      // Calculate time until next midnight
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 1, 0); 
+      const delay = nextMidnight.getTime() - now.getTime();
+      
+      setTimeout(async () => {
+        try {
+          const dbModule = await import("../db");
+          const db = await dbModule.getDb();
+          const schema = await import("../../drizzle/schema");
+          
+          if (db) {
+            await db.update(schema.managers).set({ isActive: "no" });
+            console.log("[CRON] End of day reset: all managers set to inactive");
+          }
+        } catch (err) {
+          console.error("[CRON] Error resetting managers:", err);
+        }
+        scheduleNext(); // Schedule for the next day
+      }, delay);
+    };
+    scheduleNext();
+  }
+
+  setupEndOfDayJob();
+
   const preferredPort = parseInt(process.env.PORT ?? "3000");
   const port = await findAvailablePort(preferredPort);
   if (port !== preferredPort) console.log(`Port ${preferredPort} busy, using ${port}`);

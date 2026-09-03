@@ -98,7 +98,7 @@ function groupVisits(visits: Visit[], locale: Locale): DayGroup[] {
     const firstVisit = sorted[0];
     const lastVisit = sorted[sorted.length - 1];
     const totalDurationMin = sorted.reduce((acc, v) => acc + durationMin(v.checkInAt, v.checkOutAt), 0);
-    const totalDistanceKm = sorted.reduce((acc, v) => acc + (v.distanceToPrevBranchKm ?? 0), 0);
+    const totalDistanceKm = sorted.reduce((acc, v) => acc + (v.distanceToPrevBranchKm != null ? Number(v.distanceToPrevBranchKm) : 0), 0);
     const isActive = sorted.some((v) => v.status === "checked_in");
     const dateStr = fmtDate(firstVisit.checkInAt);
     groups.push({

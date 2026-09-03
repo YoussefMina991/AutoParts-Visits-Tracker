@@ -67,16 +67,21 @@ export const branchRouter = router({
       return { success: true };
     }),
 
-  // DELETE /trpc/branch.delete — admin soft-deletes (sets isActive=no)
+  // DELETE /trpc/branch.delete — admin deletes branch entirely
   delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("Database not available");
-      await db
-        .update(branches)
-        .set({ isActive: "no" })
-        .where(eq(branches.id, input.id));
+      
+      const { managerBranches } = await import("../drizzle/schema");
+      
+      // Delete from managerBranches first to prevent foreign key issues or stale data
+      await db.delete(managerBranches).where(eq(managerBranches.branchId, input.id));
+      
+      // Delete the branch completely
+      await db.delete(branches).where(eq(branches.id, input.id));
+      
       return { success: true };
     }),
 });

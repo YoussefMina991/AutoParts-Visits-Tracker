@@ -291,6 +291,8 @@ export const visitRouter = router({
       const finalReasons  = combinedReasons.length > 0 ? JSON.stringify(combinedReasons) : null;
       const finalScore = (input.suspicionScore || 0) + (isTeleporting ? 100 : 0);
 
+      await db.update(managers).set({ isActive: "yes" }).where(eq(managers.id, manager.id));
+
       await db.insert(visits).values({
         managerId: manager.id, branchId: input.branchId,
         visitType: input.visitType, noteType: input.noteType,
@@ -663,6 +665,8 @@ export const visitRouter = router({
           }
 
           const ciFinalMocked = ci.isMocked || isTeleporting;
+
+          await db.update(managers).set({ isActive: "yes" }).where(eq(managers.id, manager.id));
 
           const [inserted] = await db.insert(visits).values({
             managerId: manager.id,
