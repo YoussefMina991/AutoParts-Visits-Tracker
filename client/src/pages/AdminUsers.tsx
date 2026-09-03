@@ -212,6 +212,15 @@ export default function AdminUsers() {
     onError: (e) => toast.error(e.message),
   });
 
+  // 🔓 فك ربط المتصفح — يسمح للمدير بتسجيل الدخول من متصفح آيفون جديد
+  const unbindWebMutation = trpc.users.unbindWebDevice.useMutation({
+    onSuccess: () => {
+      toast.success("تم فك ربط المتصفح بنجاح — يمكن للمدير تسجيل الدخول من متصفح جديد");
+      refetch();
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   // ?? ???? ???????? ??? ??????? (admin ??)
   const checkinModeMutation = trpc.users.setCheckinMode.useMutation({
     onSuccess: () => {
@@ -483,7 +492,28 @@ export default function AdminUsers() {
                             {u.isDeviceBound ? t("users.deviceBound") : t("users.deviceUnbound")}
                           </span>
                         )}
-                        {/* ??? ???? ??????? — ???? ??????? ?? ?????? */}
+                        {/* 🌐 بادج ربط المتصفح (Web Fingerprint) — للمديرين على الويب */}
+                        {!isAdminUser && (
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 cursor-pointer"
+                            style={{
+                              background: u.isWebBound ? "rgba(16,185,129,0.15)" : "rgba(100,100,120,0.15)",
+                              color: u.isWebBound ? "#10b981" : "rgba(255,255,255,0.35)",
+                            }}
+                            title={u.isWebBound ? "مربوط بمتصفح ويب — اضغط لفك الربط" : "لم يسجل دخول من متصفح بعد"}
+                            onClick={() => {
+                              if (u.isWebBound && confirm(`فك ربط متصفح الويب لـ "${u.name}"؟`)) {
+                                unbindWebMutation.mutate({ id: u.id });
+                              }
+                            }}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: 11 }}>
+                              {u.isWebBound ? "language" : "language"}
+                            </span>
+                            {u.isWebBound ? "ويب مربوط" : "ويب حر"}
+                          </span>
+                        )}
+                        {/* وضع تسجيل الدخول — يغير السلوك من تلقائي لى يدوي */}
                         {!isAdminUser && (
                           <select
                             value={u.checkinMode ?? "automatic"}

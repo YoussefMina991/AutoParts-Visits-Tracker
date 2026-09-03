@@ -18,6 +18,13 @@ export const users = mysqlTable("users", {
   boundDeviceId: varchar("boundDeviceId", { length: 128 }),
   deviceBoundAt: timestamp("deviceBoundAt"),
 
+  // ── ربط المتصفح (Web Fingerprint Binding) ──────────────────────────────────
+  // بصمة المتصفح/الجهاز المسموح له بالدخول من الويب (Safari/Chrome على الآيفون)
+  // تُربط تلقائياً بأول تسجيل دخول من المتصفح
+  // الأدمن يقدر يفكها لو المدير بدّل موبايل آيفون
+  boundWebFingerprint: varchar("boundWebFingerprint", { length: 256 }),
+  webFingerprintAt: timestamp("webFingerprintAt"),
+
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

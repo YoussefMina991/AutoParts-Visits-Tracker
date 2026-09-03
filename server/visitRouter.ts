@@ -207,6 +207,8 @@ export const visitRouter = router({
       photoBase64: z.string().max(6_000_000).optional(),
       notes: z.string().max(1000).optional(),
       isMocked: z.boolean().optional(),
+      // explicit flag: the request comes from the user-initiated manual check-in button
+      manual: z.boolean().optional(),
       suspicionScore: z.number().int().min(0).max(10_000).optional(),
       mockReasons: z.array(z.string().max(200)).max(20).optional(),
     }))
@@ -232,7 +234,9 @@ export const visitRouter = router({
       // but any client could still call this endpoint without geofence/sensor context.
       const meRow = await db.select({ checkinMode: users.checkinMode }).from(users)
           .where(eq(users.id, ctx.user!.id)).limit(1);
-        if (meRow[0]?.checkinMode === "manual" && input.visitType === "branch") {
+        // manual-mode users may check in ONLY via the explicit manual button flag;
+        // any auto-engine path (native or web) is rejected.
+        if (meRow[0]?.checkinMode === "manual" && input.visitType === "branch" && !input.manual) {
           throw new Error("MANUAL_MODE_BLOCKED");
         }
 

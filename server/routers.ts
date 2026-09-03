@@ -12,11 +12,11 @@ import { TRPCError } from "@trpc/server";
 
 // ── 🔒 إخفاء البيانات الحساسة قبل إرسال المستخدم للعميل ──────────────────────
 // (كان الـ passwordHash بيتبعت للموبايل مع كل طلب — ثغرة أمنية)
-function sanitizeUser<T extends { passwordHash?: string; boundDeviceId?: string | null }>(
+function sanitizeUser<T extends { passwordHash?: string; boundDeviceId?: string | null; boundWebFingerprint?: string | null }>(
   user: T | null
 ) {
   if (!user) return null;
-  const { passwordHash: _ph, boundDeviceId: _bd, ...safe } = user;
+  const { passwordHash: _ph, boundDeviceId: _bd, boundWebFingerprint: _bwf, ...safe } = user;
   return safe;
 }
 
@@ -41,6 +41,8 @@ export const appRouter = router({
         ...u,
         isDeviceBound: Boolean(u.boundDeviceId),
         boundDeviceId: undefined,
+        isWebBound: Boolean(u.boundWebFingerprint),
+        boundWebFingerprint: undefined,
       }));
     }),
 
@@ -126,6 +128,21 @@ export const appRouter = router({
         }
         await db.updateUser(input.id, { boundDeviceId: null, deviceBoundAt: null });
         console.log(`[Auth] Admin ${ctx.user?.username} unbound device for user ${existing.username}`);
+        return { success: true };
+      }),
+
+    // 🔓 فك ربط متصفح الويب — يسمح للمدير بتسجيل الدخول من متصفح آيفون جديد
+    // (المتصفح الجديد هيتربط تلقائياً بأول تسجيل دخول بعدها)
+    unbindWebDevice: adminProcedure
+      .input(z.object({ id: z.number().int().positive() }))
+      .mutation(async ({ input, ctx }) => {
+        const existing = await db.getUserById(input.id);
+        if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "المستخدم غير موجود" });
+        if (!existing.boundWebFingerprint) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "الحساب مش مربوط بمتصفح ويب أصلاً" });
+        }
+        await db.updateUser(input.id, { boundWebFingerprint: null, webFingerprintAt: null });
+        console.log(`[Auth] Admin ${ctx.user?.username} unbound web browser for user ${existing.username}`);
         return { success: true };
       }),
 

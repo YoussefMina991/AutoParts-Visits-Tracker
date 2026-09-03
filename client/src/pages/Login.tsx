@@ -7,6 +7,7 @@ import { Capacitor } from "@capacitor/core";
 import { Device } from "@capacitor/device";
 import { SERVER_BASE_URL } from "@/lib/config";
 import { AutoPartsLogo } from "@/components/AutoPartsLogo";
+import { getOrCreateFingerprint } from "@/lib/webFingerprint";
 
 export default function LoginPage() {
   const [username, setUsername] = useState("");
@@ -26,19 +27,25 @@ export default function LoginPage() {
     if (!username.trim() || !password) return;
     setLoading(true);
     try {
-      // 🔒 بصمة الجهاز — بتتربط بالحساب أول تسجيل دخول وتمنع استخدام
-      // الحساب من أي موبايل تاني
+      const isNative = Capacitor.isNativePlatform();
+
+      // بصمة الجهاز او المتصفح — بتتربط بالحساب اول تسجيل دخول
+      // وتمنع استخدام الحساب من اي جهاز/متصفح تاني
       let deviceId: string | undefined;
-      if (Capacitor.isNativePlatform()) {
+      let webFingerprint: string | undefined;
+
+      if (isNative) {
+        // Native Android/iOS: استخدم Device ID الرسمي
         const info = await Device.getId();
         deviceId = info.identifier;
+      } else {
+        // Web Browser (iPhone Safari/Chrome): استخدم Browser Fingerprint
+        webFingerprint = await getOrCreateFingerprint();
       }
 
-      // ✅ نفس الرابط الافتراضي للإنتاج المستخدم في باقي التطبيق
       const BASE_URL = SERVER_BASE_URL;
-      const LOGIN_URL = Capacitor.isNativePlatform()
-        ? `${BASE_URL}/api/auth/login`
-        : "/api/auth/login";
+      const LOGIN_URL = isNative ? `${BASE_URL}/api/auth/login` : "/api/auth/login";
+
       const res = await fetch(LOGIN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -46,8 +53,9 @@ export default function LoginPage() {
         body: JSON.stringify({
           username: username.trim(),
           password,
-          platform: Capacitor.isNativePlatform() ? "mobile" : "web",
+          platform: isNative ? "mobile" : "web",
           ...(deviceId ? { deviceId } : {}),
+          ...(webFingerprint ? { webFingerprint } : {}),
         }),
       });
       const data = await res.json();
@@ -57,7 +65,7 @@ export default function LoginPage() {
       }
       window.location.href = "/";
     } catch {
-      toast.error("حدث خطأ في الاتصال بالخادم — اتأكد من اتصالك بالإنترنت");
+      toast.error("حدث خطأ في الاتصال بالخادم — اتاكد من اتصالك بالانترنت");
     } finally {
       setLoading(false);
     }

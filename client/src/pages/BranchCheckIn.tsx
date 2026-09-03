@@ -8,6 +8,8 @@ import { Loader2 } from "lucide-react";
 import { MapView, MapMarker, GeofenceCircle, type MapCenter } from "@/components/Map";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Capacitor } from "@capacitor/core";
+import SelfieCapture from "@/components/SelfieCapture";
 
 export default function BranchCheckIn() {
   const [view, setView] = useState<"list" | "map">("map");
@@ -20,6 +22,15 @@ export default function BranchCheckIn() {
     branchId?: number;
   }>({ isOpen: false, type: "check_in_branch" });
   const [visitNotes, setVisitNotes] = useState("");
+
+  // حالة الـ Selfie — بيتحكم في فتح شاشة الكاميرا على الويب قبل الـ check-in
+  const isWebPlatform = !Capacitor.isNativePlatform();
+  const [selfieState, setSelfieState] = useState<{
+    isOpen: boolean;
+    pendingBranchId?: number;
+    pendingType: "branch" | "external";
+    capturedBase64?: string;
+  }>({ isOpen: false, pendingType: "branch" });
 
   const { latestLocation } = useGeofenceContext();
   const gpsLocation = latestLocation ? { lat: latestLocation.lat, lon: latestLocation.lon } : null;
@@ -59,8 +70,14 @@ export default function BranchCheckIn() {
   const openCheckInModal = (branchId: number) => {
     if (!gpsLocation) return toast.error("لسه بنحدد موقعك — استنى ثواني");
     if (globalMockedStatus) {
-      return toast.error("🚨 الموقع وهمي! اقفل أي برنامج Fake GPS وحاول تاني");
+      return toast.error("🚨 الموقع وهمي! اقفل اي برنامج Fake GPS وحاول تاني");
     }
+    // على الويب (آيفون): نفتح شاشة الـ Selfie الاول
+    if (isWebPlatform) {
+      setSelfieState({ isOpen: true, pendingBranchId: branchId, pendingType: "branch" });
+      return;
+    }
+    // على الاندرويد النيتف: نفتح المودال مباشرة
     setNotesModalState({ isOpen: true, type: "check_in_branch", branchId });
     setVisitNotes("");
   };
@@ -68,10 +85,31 @@ export default function BranchCheckIn() {
   const openExternalMissionModal = () => {
     if (!gpsLocation) return toast.error("لسه بنحدد موقعك — استنى ثواني");
     if (globalMockedStatus) {
-      return toast.error("🚨 الموقع وهمي! اقفل أي برنامج Fake GPS وحاول تاني");
+      return toast.error("🚨 الموقع وهمي! اقفل اي برنامج Fake GPS وحاول تاني");
+    }
+    // على الويب: نفتح الـ Selfie الاول
+    if (isWebPlatform) {
+      setSelfieState({ isOpen: true, pendingType: "external" });
+      return;
     }
     setNotesModalState({ isOpen: true, type: "check_in_external" });
     setVisitNotes("");
+  };
+
+  // بعد ما المدير يلتقط الصورة على الويب - نفتح مودال النوتس
+  const handleSelfieCapture = (base64: string) => {
+    const { pendingBranchId, pendingType } = selfieState;
+    setSelfieState(prev => ({ ...prev, isOpen: false, capturedBase64: base64 }));
+    if (pendingType === "branch" && pendingBranchId) {
+      setNotesModalState({ isOpen: true, type: "check_in_branch", branchId: pendingBranchId });
+    } else {
+      setNotesModalState({ isOpen: true, type: "check_in_external" });
+    }
+    setVisitNotes("");
+  };
+
+  const handleSelfieCancel = () => {
+    setSelfieState({ isOpen: false, pendingType: "branch" });
   };
 
   const handleManualCheckOutClick = () => {
@@ -97,6 +135,9 @@ export default function BranchCheckIn() {
       return toast.error("برجاء إدخال سبب قصر مدة الزيارة");
     }
 
+    // الصورة المحفوظة من شاشة الـ Selfie (ويب فقط)
+    const selfieBase64 = selfieState.capturedBase64;
+
     try {
       if (type === "check_in_branch") {
         if (!branchId) return;
@@ -108,7 +149,10 @@ export default function BranchCheckIn() {
           isMocked: globalMockedStatus,
           visitType: "branch",
           noteType: "general",
+          manual: true,
           notes: visitNotes.trim() || undefined,
+          // ارسال الصورة مع check-in على الويب
+          ...(selfieBase64 ? { photoBase64: selfieBase64 } : {}),
         });
         toast.success(`✅ تم تسجيل دخولك في ${branchName}`);
         refetchVisits();
@@ -120,11 +164,12 @@ export default function BranchCheckIn() {
           visitType: "external_mission",
           noteType: "external_mission",
           notes: visitNotes.trim(),
+          ...(selfieBase64 ? { photoBase64: selfieBase64 } : {}),
         });
         toast.success(`✅ تم بدء مأمورية خارجية بنجاح`);
         refetchVisits();
       } else if (type === "check_out_short" || type === "check_out_general") {
-        // ✅ null guard: لو إحنا بينما المودال مفتوحة وبيتم refetch وتغيرت حالة الزيارة
+        // null guard: لو إحنا بينما المودال مفتوحة وبيتم refetch وتغيرت حالة الزيارة
         if (!activeVisit) {
           toast.error("انتهت الجلسة من تلقاء نفسها");
           setNotesModalState({ ...notesModalState, isOpen: false });
@@ -139,6 +184,8 @@ export default function BranchCheckIn() {
         refetchVisits();
       }
       setNotesModalState({ isOpen: false, type: "check_in_branch" });
+      // مسح صورة الـ Selfie بعد الارسال
+      setSelfieState(prev => ({ ...prev, capturedBase64: undefined }));
     } catch (err: any) {
       toast.error(`❌ حدث خطأ: ${err.message || String(err)}`);
     }
@@ -555,7 +602,7 @@ export default function BranchCheckIn() {
         </div>
       </div>
 
-      {/* ── مودال النوتس ── */}
+      {/* مودال النوتس */}
       <Dialog open={notesModalState.isOpen} onOpenChange={(open) => {
         if (!open) setNotesModalState({ ...notesModalState, isOpen: false });
       }}>
@@ -570,10 +617,23 @@ export default function BranchCheckIn() {
             <DialogDescription>
               {notesModalState.type === "check_in_external" && "أدخل الوجهة أو سبب المأمورية الخارجية لتوثيقها."}
               {notesModalState.type === "check_in_branch" && "يمكنك كتابة ملاحظات إضافية لهذه الزيارة (اختياري)."}
-              {notesModalState.type === "check_out_short" && "مدة الزيارة كانت قصيرة جدًا. يجب توضيح السبب لمديرك."}
+              {notesModalState.type === "check_out_short" && "مدة الزيارة كانت قصيرة جداً. يجب توضيح السبب لمديرك."}
               {notesModalState.type === "check_out_general" && "هل تريد إضافة ملاحظات عن هذه الزيارة قبل الخروج؟ (اختياري)"}
             </DialogDescription>
           </DialogHeader>
+
+          {/* معاينة صورة الـ Selfie لو اتتلقطت على الويب */}
+          {selfieState.capturedBase64 && (notesModalState.type === "check_in_branch" || notesModalState.type === "check_in_external") && (
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+              <img
+                src={selfieState.capturedBase64}
+                alt="صورة التحقق"
+                style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover", border: "2px solid #0fa5f8" }}
+              />
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", alignSelf: "flex-end", marginRight: 8 }}>صورة التحقق</span>
+            </div>
+          )}
+
           <div className="py-4">
             <Textarea
               placeholder={notesModalState.type === "check_in_branch" || notesModalState.type === "check_out_general" ? "ملاحظات اختيارية..." : "اكتب التفاصيل هنا..."}
@@ -595,6 +655,14 @@ export default function BranchCheckIn() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* شاشة الـ Selfie — على الويب فقط قبل كل check-in */}
+      {selfieState.isOpen && (
+        <SelfieCapture
+          onCapture={handleSelfieCapture}
+          onCancel={handleSelfieCancel}
+        />
+      )}
     </>
   );
 }

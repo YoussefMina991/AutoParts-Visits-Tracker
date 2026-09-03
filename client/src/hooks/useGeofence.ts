@@ -424,8 +424,6 @@ export function useGeofence() {
       accuracy: typeof accuracy === "number" ? accuracy : undefined,
       isMocked: detectedMock,
     });
-    // ?? ???? manual: ?? ???? ??? ?????? ??? locationLogs ?? ?? ??? ????? ???/???
-    if (!autoCheckinEnabledRef.current) return;
     if (historyLoadingRef.current) return;
 
     // 1. احفظ نقطة الـ GPS في الـ queue
@@ -445,6 +443,9 @@ export function useGeofence() {
       lastLocationSyncAtRef.current = now;
       syncOfflineDataRef.current(); // fire-and-forget — مش بنوقف المنطق عليها
     }
+
+    // ── لو الوضع manual: استمر في تسجيل الإحداثيات (Live Tracking) لكن أوقف التسجيل التلقائي ──
+    if (!autoCheckinEnabledRef.current) return;
 
     const currentBranches = branchesRef.current;
 
@@ -766,7 +767,7 @@ export function useGeofence() {
       window.removeEventListener("online", handleOnline);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchesLoaded ? 1 : 0]); // يُشغَّل مرة واحدة فقط أول ما الاستعلام يخلص
+  }, [branchesLoaded ? 1 : 0, checkinMode]); // يُشغَّل مرة واحدة فقط أول ما الاستعلام يخلص
 
   return { latestLocation };
 }
