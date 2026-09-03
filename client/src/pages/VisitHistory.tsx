@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { SERVER_BASE_URL } from "@/lib/config";
 import { format } from "date-fns";
 import { ar } from "date-fns/locale";
 import { Loader2 } from "lucide-react";
@@ -14,12 +13,10 @@ export default function VisitHistory() {
   const { user } = useAuth();
   // صورة المدير بتتخزن في جدول managers مش users
   const { data: managerProfile } = trpc.manager.getCurrentManager.useQuery();
-  const photoUrl = managerProfile?.photoUrl ?? null;
   const phone = managerProfile?.phone ?? null;
 
   const [tab, setTab] = useState<TabKey>("all");
   const [offset, setOffset] = useState(0);
-  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
   const { data: visitsData, isLoading } = trpc.visit.myHistory.useQuery({
     limit: PAGE_SIZE,
@@ -139,19 +136,7 @@ export default function VisitHistory() {
           margin-top: 6px;
         }
 
-        /* ── عارض الصور ── */
-        .photo-lightbox {
-          position: fixed; inset: 0; z-index: 9999;
-          background: rgba(0,0,0,0.92);
-          display: flex; align-items: center; justify-content: center;
-          padding: 24px;
-          cursor: pointer;
-        }
-        .photo-lightbox img {
-          max-width: 100%; max-height: 85vh;
-          border-radius: 16px;
-          object-fit: contain;
-        }
+
       `}</style>
 
       <div className="blue-dot-history">
@@ -164,19 +149,9 @@ export default function VisitHistory() {
         <div className="wallet-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <span className="material-symbols-outlined" style={{ fontSize: 32, color: '#0fa5f8' }}>badge</span>
-            {photoUrl ? (
-              <img
-                src={photoUrl.startsWith('http') ? photoUrl : `${SERVER_BASE_URL}${photoUrl}`}
-                alt="صورتي"
-                onClick={() => setPreviewPhoto(photoUrl.startsWith('http') ? photoUrl : `${SERVER_BASE_URL}${photoUrl}`)}
-                className="visit-photo-thumb"
-                style={{ width: 52, height: 52 }}
-              />
-            ) : (
-              <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(15,165,248,0.1)', border: '1px solid rgba(15,165,248,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0fa5f8', fontWeight: 'bold', fontSize: 22 }}>
-                {(user?.name || user?.username || "م").charAt(0)}
-              </div>
-            )}
+            <div style={{ width: 52, height: 52, borderRadius: 14, background: 'rgba(15,165,248,0.1)', border: '1px solid rgba(15,165,248,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0fa5f8', fontWeight: 'bold', fontSize: 22 }}>
+              {(user?.name || user?.username || "م").charAt(0)}
+            </div>
           </div>
           <div className="card-user-info">
             <h3>{user?.name || user?.username || "مدير"}</h3>
@@ -226,26 +201,11 @@ export default function VisitHistory() {
               const durationMin = checkOutTime
                 ? Math.round((checkOutTime.getTime() - checkInTime.getTime()) / 60000)
                 : null;
-              const photoFull = visit.photoUrl
-                ? visit.photoUrl.startsWith("http")
-                  ? visit.photoUrl
-                  : `${SERVER_BASE_URL}${visit.photoUrl}`
-                : null;
-
               return (
                 <div key={visit.id} className="history-item">
-                  {photoFull ? (
-                    <img
-                      src={photoFull}
-                      alt={`صورة ${visit.branchName}`}
-                      className="visit-photo-thumb"
-                      onClick={() => setPreviewPhoto(photoFull)}
-                    />
-                  ) : (
-                    <div className="no-photo-icon">
-                      <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'rgba(255,255,255,0.25)' }}>store</span>
-                    </div>
-                  )}
+                  <div className="no-photo-icon">
+                    <span className="material-symbols-outlined" style={{ fontSize: 22, color: 'rgba(255,255,255,0.25)' }}>store</span>
+                  </div>
                   <div className="item-details">
                     <h4>{visit.branchName ?? "مأمورية خارجية"}</h4>
                     <p>
@@ -298,13 +258,6 @@ export default function VisitHistory() {
           </>
         )}
       </div>
-
-      {/* ── عارض الصور بالحجم الكامل ── */}
-      {previewPhoto && (
-        <div className="photo-lightbox" onClick={() => setPreviewPhoto(null)}>
-          <img src={previewPhoto} alt="عرض الصورة" />
-        </div>
-      )}
     </>
   );
 }
