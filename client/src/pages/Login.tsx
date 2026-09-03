@@ -13,7 +13,6 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const { user } = useAuth();
   const [, setLocation] = useLocation();
@@ -276,86 +275,56 @@ export default function LoginPage() {
           </div>
 
           <div className="features-area">
-            {!showForm ? (
-              <div className="fade-in">
-                <div className="feature-card mb-4" style={{ marginBottom: 16 }}>
-                  <div className="feature-icon-wrapper">
-                    <span className="material-symbols-outlined">security</span>
-                  </div>
-                  <div className="feature-content">
-                    <h3>حماية كاملة</h3>
-                    <p>حسابك مربوط بموبايلك وموقعك بيتحقق منه لحظياً — منع الغش أول بأول.</p>
-                  </div>
-                </div>
-
-                <div className="feature-card">
-                  <div className="feature-icon-wrapper">
-                    <span className="material-symbols-outlined">autorenew</span>
-                  </div>
-                  <div className="feature-content">
-                    <h3>تسجيل تلقائي</h3>
-                    <p>دخل نطاق الفرع؟ التسجيل بيحصل لوحده حتى لو النت واقف.</p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <form id="login-form" onSubmit={handleLogin} className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form id="login-form" onSubmit={handleLogin} className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <input
+                type="text"
+                className="login-input"
+                placeholder="اسم المستخدم"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={loading}
+                autoComplete="username"
+              />
+              <div style={{ position: "relative" }}>
                 <input
-                  type="text"
+                  type={showPassword ? "text" : "password"}
                   className="login-input"
-                  placeholder="اسم المستخدم"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  style={{ paddingLeft: 48 }}
+                  placeholder="كلمة السر"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   disabled={loading}
-                  autoComplete="username"
+                  autoComplete="current-password"
                 />
-                <div style={{ position: "relative" }}>
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    className="login-input"
-                    style={{ paddingLeft: 48 }}
-                    placeholder="كلمة السر"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={loading}
-                    autoComplete="current-password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    style={{
-                      position: "absolute",
-                      left: 8,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      background: "transparent",
-                      border: "none",
-                      color: "rgba(255,255,255,0.45)",
-                      cursor: "pointer",
-                      padding: 8,
-                      display: "flex",
-                    }}
-                    tabIndex={-1}
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
-                      {showPassword ? "visibility_off" : "visibility"}
-                    </span>
-                  </button>
-                </div>
-              </form>
-            )}
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: "absolute",
+                    left: 8,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
+                    border: "none",
+                    color: "rgba(255,255,255,0.45)",
+                    cursor: "pointer",
+                    padding: 8,
+                    display: "flex",
+                  }}
+                  tabIndex={-1}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+                    {showPassword ? "visibility_off" : "visibility"}
+                  </span>
+                </button>
+              </div>
+            </form>
           </div>
 
           <div className="actions-area">
-            {!showForm ? (
-              <button className="btn-blue" onClick={() => setShowForm(true)}>
-                تسجيل الدخول
-              </button>
-            ) : (
-              <button type="submit" form="login-form" className="btn-blue" disabled={loading}>
-                {loading ? <Loader2 className="animate-spin" /> : "دخول"}
-              </button>
-            )}
+            <button type="submit" form="login-form" className="btn-blue" disabled={loading}>
+              {loading ? <Loader2 className="animate-spin" /> : "دخول"}
+            </button>
           </div>
 
           <p style={{ marginTop: 30, fontSize: 11, color: "rgba(255,255,255,0.35)", textAlign: "center", lineHeight: 1.7 }}>

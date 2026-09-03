@@ -4,13 +4,6 @@ import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { SERVER_BASE_URL } from "@/lib/config";
 
-// ── تحية حسب الوقت الفعلي بالعربي ─────────────────────────────────────────────
-function getGreeting(): string {
-  const h = new Date().getHours();
-  if (h >= 5 && h < 12) return "صباح الخير";
-  if (h >= 12 && h < 17) return "نهار سعيد";
-  return "مساء الخير";
-}
 
 function formatDuration(ms: number): string {
   const totalMin = Math.max(0, Math.floor(ms / 60_000));
@@ -281,7 +274,6 @@ export default function ManagerDashboard() {
               </div>
             )}
             <div className="greeting">
-              <h2 style={{ textTransform: 'none' }}>{getGreeting()} 👋</h2>
               <h1 style={{ textTransform: 'none', letterSpacing: 0 }}>{user?.name || user?.username || "مدير"}</h1>
             </div>
           </div>
@@ -334,17 +326,6 @@ export default function ManagerDashboard() {
           </Link>
         )}
 
-        <div className="hero-banner fade-up" style={{ animationDelay: '0.1s' }}>
-          <span className="material-symbols-outlined hero-icon">local_shipping</span>
-          <div className="hero-content">
-            <h3>{activeVisit ? "شغال دلوقتي 💪" : "جاهز للشغل؟"}</h3>
-            <p style={{ maxWidth: "70%" }}>
-              {activeVisit
-                ? `انت في ${activeVisit.branchName} — بالتوفيق!`
-                : "ادخل أقرب فرع والتطبيق هيسجل دخولك تلقائياً."}
-            </p>
-          </div>
-        </div>
 
         {/* ── 📊 إحصائيات اليوم — من الداتا الحقيقية ────────────────────────── */}
         <div className="stats-grid fade-up" style={{ animationDelay: '0.2s' }}>

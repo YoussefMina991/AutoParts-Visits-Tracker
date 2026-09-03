@@ -521,7 +521,6 @@ export default function AdminDashboard() {
             inset 0 1px 0 rgba(92,184,196,0.10);
         }
         .adm-glass-card:hover {
-          transform: translateY(-5px);
           box-shadow:
             0 16px 48px rgba(92,184,196,0.22),
             0 4px 16px  rgba(92,184,196,0.14),
@@ -542,7 +541,6 @@ export default function AdminDashboard() {
           width: 88px;
           height: 88px;
           flex-shrink: 0;
-          animation: glass-float 5s ease-in-out infinite;
         }
         .adm-glass-avatar {
           width: 88px;
@@ -572,7 +570,6 @@ export default function AdminDashboard() {
           background: #22c55e;
           border: 2.5px solid rgba(255,255,255,0.90);
           box-shadow: 0 0 0 0 rgba(34,197,94,0.6);
-          animation: pulse-ring 2s ease-out infinite;
         }
 
         /* ── Card Body ───────────────────────────────────────────── */

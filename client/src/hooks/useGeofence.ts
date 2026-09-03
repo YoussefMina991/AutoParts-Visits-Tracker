@@ -535,7 +535,7 @@ export function useGeofence() {
     // ── 3. Auto check-in ───────────────────────────────────────────────────
     if (isProcessingCheckInRef.current) return;
     isProcessingCheckInRef.current = true;
-    
+
     try {
       for (const branch of currentBranches) {
         if (!branch.latitude || !branch.longitude) continue;
@@ -572,52 +572,52 @@ export function useGeofence() {
 
           await setBranchCooldown(branch.id);
 
-        if (isOnline()) {
-          try {
-            await checkInMutationRef.current.mutateAsync({
+          if (isOnline()) {
+            try {
+              await checkInMutationRef.current.mutateAsync({
+                branchId: branch.id,
+                latitude: currentLat.toString(),
+                longitude: currentLng.toString(),
+                isMocked: detectedMock,
+              });
+              toast.success(`✅ تسجيل دخول تلقائي في ${branch.name}`);
+              refetchHistoryRef.current();
+              // ⚡ ابعت نقاط التتبع فوراً مع الحدث
+              syncOfflineDataRef.current();
+            } catch (err: any) {
+              if (err.message?.includes("Already checked")) {
+                // المستخدم محسوب عليه check-in بالفعل — حدِّث الحالة فقط
+                refetchHistoryRef.current();
+              } else {
+                // ✅ cooldown قصير (دقيقة) بدل مسحه — يمنع إعادة المحاولة العشوائية
+                // وToast spam لما الشبكة ضعيفة، مع إعادة المحاولة سريعاً نسبياً
+                await setBranchCooldown(branch.id, CHECK_IN_FAILURE_COOLDOWN_MS);
+              }
+            }
+          } else {
+            const localId = `local_${Date.now()}_${branch.id}`;
+            const pending = await getPendingVisits();
+            pending.push({
+              type: "check_in",
               branchId: branch.id,
+              branchName: branch.name,
               latitude: currentLat.toString(),
               longitude: currentLng.toString(),
+              accuracy: accuracy?.toString(),
+              checkInAt: new Date().toISOString(),
+              localId,
               isMocked: detectedMock,
             });
-            toast.success(`✅ تسجيل دخول تلقائي في ${branch.name}`);
-            refetchHistoryRef.current();
-            // ⚡ ابعت نقاط التتبع فوراً مع الحدث
-            syncOfflineDataRef.current();
-          } catch (err: any) {
-            if (err.message?.includes("Already checked")) {
-              // المستخدم محسوب عليه check-in بالفعل — حدِّث الحالة فقط
-              refetchHistoryRef.current();
-            } else {
-              // ✅ cooldown قصير (دقيقة) بدل مسحه — يمنع إعادة المحاولة العشوائية
-              // وToast spam لما الشبكة ضعيفة، مع إعادة المحاولة سريعاً نسبياً
-              await setBranchCooldown(branch.id, CHECK_IN_FAILURE_COOLDOWN_MS);
-            }
+            await setPendingVisits(pending);
+            toast.success(`✅ دخول مؤقت في ${branch.name} — سيُرسل لما النت يرجع`);
           }
+          firstSeenAtRef.current.delete(branch.id); // Reset dwell timer after successful trigger
+          break; // check-in في فرع واحد بس
         } else {
-          const localId = `local_${Date.now()}_${branch.id}`;
-          const pending = await getPendingVisits();
-          pending.push({
-            type: "check_in",
-            branchId: branch.id,
-            branchName: branch.name,
-            latitude: currentLat.toString(),
-            longitude: currentLng.toString(),
-            accuracy: accuracy?.toString(),
-            checkInAt: new Date().toISOString(),
-            localId,
-            isMocked: detectedMock,
-          });
-          await setPendingVisits(pending);
-          toast.success(`✅ دخول مؤقت في ${branch.name} — سيُرسل لما النت يرجع`);
+          // Outside the branch, reset its dwell timer
+          firstSeenAtRef.current.delete(branch.id);
         }
-        firstSeenAtRef.current.delete(branch.id); // Reset dwell timer after successful trigger
-        break; // check-in في فرع واحد بس
-      } else {
-        // Outside the branch, reset its dwell timer
-        firstSeenAtRef.current.delete(branch.id);
       }
-    }
     } finally {
       isProcessingCheckInRef.current = false;
     }
@@ -726,10 +726,10 @@ export function useGeofence() {
               //   المتصفحات بتبلغ دقة عالية جداً أحياناً — نعتمد على 0 بس
               const isSuspicious = pos.coords.accuracy === 0;
               handlePositionUpdate(
-                pos.coords.latitude, 
-                pos.coords.longitude, 
-                pos.coords.accuracy, 
-                isSuspicious, 
+                pos.coords.latitude,
+                pos.coords.longitude,
+                pos.coords.accuracy,
+                isSuspicious,
                 pos.coords.speed !== null ? pos.coords.speed : undefined
               );
             }
@@ -766,7 +766,7 @@ export function useGeofence() {
       listenerPromise.then((l) => l.remove());
       window.removeEventListener("online", handleOnline);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branchesLoaded ? 1 : 0, checkinMode]); // يُشغَّل مرة واحدة فقط أول ما الاستعلام يخلص
 
   return { latestLocation };
