@@ -6,6 +6,7 @@ import { format, startOfMonth, endOfMonth, isToday } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { useLang, type TFunc } from "@/lib/i18n";
+import { SERVER_BASE_URL } from "@/lib/config";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Visit {
@@ -189,7 +190,7 @@ function exportToExcel(
 }
 
 // ─── Day Card ─────────────────────────────────────────────────────────────────
-function DayCard({ group }: { group: DayGroup }) {
+function DayCard({ group, onPreviewPhoto }: { group: DayGroup; onPreviewPhoto?: (url: string) => void }) {
   const { t, lang } = useLang();
   const locale: Locale = lang === "ar" ? ar : undefined;
   const hUnit = t("time.hourShort");
@@ -366,7 +367,22 @@ function DayCard({ group }: { group: DayGroup }) {
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          {v.photoUrl && <Camera className="w-4 h-4 text-[var(--adm-text-1)]" />}
+                          {v.photoUrl && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const photoFull = v.photoUrl!.startsWith("http")
+                                  ? v.photoUrl!
+                                  : `${SERVER_BASE_URL}${v.photoUrl}`;
+                                onPreviewPhoto?.(photoFull);
+                              }}
+                              className="cursor-pointer hover:opacity-80 bg-[var(--adm-bg)] border border-[var(--adm-border)] p-1 rounded-md transition-opacity"
+                              title="عرض الصورة"
+                            >
+                              <Camera className="w-4 h-4 text-[var(--adm-text-1)]" />
+                            </button>
+                          )}
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                             isCheckedIn
                               ? "text-[var(--adm-text-1)] bg-[var(--adm-bg)] border-[var(--adm-text-2)]"
@@ -418,6 +434,7 @@ export default function AdminReports() {
     managerId: "",
   });
   const [exporting, setExporting] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
 
   // ── Deep-link: /reports?managerId=<n> pre-filters the manager dropdown (Part B)
   const searchString = useSearch();
@@ -600,12 +617,26 @@ export default function AdminReports() {
                 {t("reports.workDaysHint", { n: dayGroups.length })}
               </span>
             </div>
-            {dayGroups.map((g) => (
-              <DayCard key={`${g.managerEmail}-${g.date}`} group={g} />
+            {dayGroups.map((group, i) => (
+              <DayCard key={`${group.managerId}-${group.date}`} group={group} onPreviewPhoto={setPreviewPhoto} />
             ))}
           </section>
         )}
       </main>
+
+      {/* Photo Preview Modal */}
+      {previewPhoto && (
+        <div 
+          className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <img 
+            src={previewPhoto} 
+            alt="عرض الصورة" 
+            className="max-w-full max-h-full object-contain rounded-xl"
+          />
+        </div>
+      )}
     </div>
   );
 }
