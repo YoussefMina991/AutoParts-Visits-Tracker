@@ -127,6 +127,11 @@ function ManagerCard({ m, visitsToday }: { m: any; visitsToday: number }) {
               <span className="adm-glass-chip-dot" />
               {online ? t("dashboard.active") : t("dashboard.idle")}
             </span>
+            {m.isActive === "no" && (
+              <span className="adm-glass-chip" style={{ background: "rgba(239,68,68,0.12)", color: "#dc2626", borderColor: "rgba(239,68,68,0.30)" }}>
+                غير مفعل
+              </span>
+            )}
           </div>
 
           {/* Stats row */}
@@ -768,7 +773,7 @@ export default function AdminDashboard() {
           <div style={{ marginBottom: 28 }}>
             <div className="adm-section-header">
               <span className="adm-section-title">
-                {t("dashboard.activeManagersNow")}
+                {t("dashboard.allManagers")}
                 {!ll && (
                   <span className="adm-online-badge">
                     {t("dashboard.onlineCount", { n: activeManagers.length })}

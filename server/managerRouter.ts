@@ -221,20 +221,20 @@ export const managerRouter = router({
     const db = await getDb();
     if (!db) throw new Error("Database not available");
 
-    const activeManagers = await db
+    const allManagers = await db
       .select({
         id: managers.id,
         userName: users.name,
         phone: managers.phone,
         photoUrl: managers.photoUrl,
+        isActive: managers.isActive,
       })
       .from(managers)
-      .innerJoin(users, eq(managers.userId, users.id))
-      .where(eq(managers.isActive, "yes"));
+      .innerJoin(users, eq(managers.userId, users.id));
 
-    if (activeManagers.length === 0) return [];
+    if (allManagers.length === 0) return [];
 
-    const managerIds = activeManagers.map((m) => m.id);
+    const managerIds = allManagers.map((m) => m.id);
 
     // ① آخر timestamp لكل مدير
     const latestPerManager = await db
@@ -247,7 +247,7 @@ export const managerRouter = router({
       .groupBy(locationLogs.managerId);
 
     if (latestPerManager.length === 0) {
-      return activeManagers.map((m) => ({ ...m, location: null }));
+      return allManagers.map((m) => ({ ...m, location: null }));
     }
 
     // ② جيب نقاط الـ GPS نفسها بشرط (managerId + timestamp) المطابقين
@@ -294,7 +294,7 @@ export const managerRouter = router({
       }
     }
 
-    return activeManagers.map((m) => {
+    return allManagers.map((m) => {
       const live = locationByManager.get(m.id) ?? null;
       if (live) {
         return { ...m, checkinMode: modeByManagerId.get(m.id) ?? "automatic", location: live };
