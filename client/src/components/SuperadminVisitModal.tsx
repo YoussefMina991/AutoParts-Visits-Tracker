@@ -1,13 +1,73 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
+import { X, ChevronDown, Loader2, Edit3 } from "lucide-react";
+
+// ─── Select row ───────────────────────────────────────────────────────────────
+function FieldSelect({ label, value, onChange, options, icon }: {
+  label: string; value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  icon?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-semibold text-[var(--adm-text-2)] px-1" style={{ fontFamily: "'Cairo', sans-serif" }}>{label}</label>
+      <div className="relative">
+        {icon && <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-[var(--adm-text-3)]" style={{ fontSize: 16, pointerEvents: "none" }}>{icon}</span>}
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="w-full h-11 rounded-xl text-sm outline-none appearance-none cursor-pointer"
+          style={{
+            paddingInlineStart: icon ? "36px" : "16px",
+            paddingInlineEnd: "32px",
+            background: "var(--adm-bg)",
+            border: "1px solid var(--adm-border)",
+            color: "var(--adm-text-1)",
+            fontFamily: "'Cairo', sans-serif",
+          }}
+        >
+          {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        <ChevronDown size={14} className="absolute end-3 top-1/2 -translate-y-1/2 text-[var(--adm-text-3)] pointer-events-none" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Text Input ───────────────────────────────────────────────────────────────
+function FieldInput({ label, value, onChange, type = "text", dir = "rtl", placeholder, icon }: {
+  label: string; value: string; onChange: (v: string) => void;
+  type?: string; dir?: string; placeholder?: string; icon?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-semibold text-[var(--adm-text-2)] px-1" style={{ fontFamily: "'Cairo', sans-serif" }}>{label}</label>
+      <div className="relative">
+        {icon && <span className="material-symbols-outlined absolute start-3 top-1/2 -translate-y-1/2 text-[var(--adm-text-3)]" style={{ fontSize: 16, pointerEvents: "none" }}>{icon}</span>}
+        <input
+          type={type}
+          dir={dir}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full h-11 rounded-xl text-sm outline-none placeholder:text-[var(--adm-text-3)]"
+          style={{
+            paddingInlineStart: icon ? "36px" : "16px",
+            paddingInlineEnd: "16px",
+            background: "var(--adm-bg)",
+            border: "1px solid var(--adm-border)",
+            color: "var(--adm-text-1)",
+            fontFamily: "'Cairo', sans-serif",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 interface SuperadminVisitModalProps {
   visit: any | null;
@@ -36,7 +96,7 @@ export function SuperadminVisitModal({ visit, open, onOpenChange }: SuperadminVi
     status: visit?.status || "checked_in",
     isMocked: visit?.isMocked || "no",
     notes: visit?.notes || "",
-    distanceToPrevBranchKm: visit?.distanceToPrevBranchKm || 0,
+    distanceToPrevBranchKm: visit?.distanceToPrevBranchKm?.toString() || "0",
   });
 
   useEffect(() => {
@@ -49,7 +109,7 @@ export function SuperadminVisitModal({ visit, open, onOpenChange }: SuperadminVi
         status: visit.status || "checked_in",
         isMocked: visit.isMocked || "no",
         notes: visit.notes || "",
-        distanceToPrevBranchKm: visit.distanceToPrevBranchKm || 0,
+        distanceToPrevBranchKm: visit.distanceToPrevBranchKm?.toString() || "0",
       });
     }
   }, [visit]);
@@ -82,117 +142,197 @@ export function SuperadminVisitModal({ visit, open, onOpenChange }: SuperadminVi
     });
   };
 
-  if (!visit) return null;
+  if (!open || !visit) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md bg-zinc-950 border-zinc-800 text-zinc-100 max-h-[90vh] overflow-y-auto" dir="rtl">
-        <DialogHeader>
-          <DialogTitle className="text-emerald-400">تعديل الزيارة (صلاحية سوبر أدمن)</DialogTitle>
-        </DialogHeader>
+    <>
+      {/* Overlay */}
+      <div
+        onClick={() => onOpenChange(false)}
+        style={{
+          position: "fixed", inset: 0,
+          background: "rgba(0,0,0,0.55)",
+          backdropFilter: "blur(4px)",
+          zIndex: 9998,
+        }}
+      />
 
-        <div className="space-y-4 py-4">
-          <div className="grid grid-cols-1 gap-2">
-            <Label>وقت الحضور (Check-in)</Label>
-            <Input 
-              type="datetime-local" 
-              className="bg-zinc-900 border-zinc-800 text-left"
-              dir="ltr"
-              value={formData.checkInAt}
-              onChange={(e) => setFormData(p => ({ ...p, checkInAt: e.target.value }))}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-2">
-            <Label>وقت الانصراف (Check-out)</Label>
-            <Input 
-              type="datetime-local" 
-              className="bg-zinc-900 border-zinc-800 text-left"
-              dir="ltr"
-              value={formData.checkOutAt}
-              onChange={(e) => setFormData(p => ({ ...p, checkOutAt: e.target.value }))}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>حالة الزيارة</Label>
-              <Select value={formData.status} onValueChange={(v) => setFormData(p => ({ ...p, status: v }))}>
-                <SelectTrigger className="bg-zinc-900 border-zinc-800"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="checked_in">مفتوحة (Checked In)</SelectItem>
-                  <SelectItem value="checked_out">منتهية (Checked Out)</SelectItem>
-                </SelectContent>
-              </Select>
+      {/* Modal */}
+      <div
+        dir="rtl"
+        style={{
+          position: "fixed", top: "50%", left: "50%",
+          transform: "translate(-50%, -50%)",
+          width: "min(520px, 96vw)",
+          maxHeight: "90vh",
+          overflowY: "auto",
+          background: "var(--adm-surface)",
+          border: "1px solid var(--adm-border)",
+          borderRadius: "20px",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.5)",
+          zIndex: 9999,
+          scrollbarWidth: "thin",
+        }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-6 py-5 sticky top-0 z-10"
+          style={{ background: "var(--adm-surface)", borderBottom: "1px solid var(--adm-border)", borderRadius: "20px 20px 0 0" }}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ background: "rgba(16,185,129,0.12)" }}
+            >
+              <Edit3 size={18} style={{ color: "#10b981" }} />
             </div>
-            
-            <div className="grid gap-2">
-              <Label>تلاعب (Mocked)</Label>
-              <Select value={formData.isMocked} onValueChange={(v) => setFormData(p => ({ ...p, isMocked: v }))}>
-                <SelectTrigger className="bg-zinc-900 border-zinc-800"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="yes">نعم</SelectItem>
-                  <SelectItem value="no">لا</SelectItem>
-                </SelectContent>
-              </Select>
+            <div>
+              <h2 className="font-bold text-[15px]" style={{ fontFamily: "'Cairo', sans-serif", color: "var(--adm-text-1)" }}>
+                تعديل الزيارة
+              </h2>
+              <p className="text-[11px]" style={{ color: "var(--adm-text-3)", fontFamily: "'Cairo', sans-serif" }}>
+                صلاحية سوبر أدمن
+              </p>
             </div>
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="grid gap-2">
-              <Label>نوع الزيارة</Label>
-              <Select value={formData.visitType} onValueChange={(v) => setFormData(p => ({ ...p, visitType: v }))}>
-                <SelectTrigger className="bg-zinc-900 border-zinc-800"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="branch">فرع</SelectItem>
-                  <SelectItem value="external_mission">مهمة خارجية</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="grid gap-2">
-              <Label>نوع الملاحظة</Label>
-              <Select value={formData.noteType} onValueChange={(v) => setFormData(p => ({ ...p, noteType: v }))}>
-                <SelectTrigger className="bg-zinc-900 border-zinc-800"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="general">عامة</SelectItem>
-                  <SelectItem value="short_visit">قصيرة</SelectItem>
-                  <SelectItem value="non_primary">غير أساسي</SelectItem>
-                  <SelectItem value="external_mission">مهمة خارجية</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2">
-            <Label>المسافة للفرع السابق (Km)</Label>
-            <Input 
-              type="number" 
-              step="0.01"
-              className="bg-zinc-900 border-zinc-800 text-left"
-              dir="ltr"
-              value={formData.distanceToPrevBranchKm}
-              onChange={(e) => setFormData(p => ({ ...p, distanceToPrevBranchKm: parseFloat(e.target.value) }))}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 gap-2">
-            <Label>الملاحظات (Notes)</Label>
-            <Input 
-              className="bg-zinc-900 border-zinc-800"
-              value={formData.notes}
-              onChange={(e) => setFormData(p => ({ ...p, notes: e.target.value }))}
-            />
-          </div>
+          <button
+            onClick={() => onOpenChange(false)}
+            className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
+            style={{ color: "var(--adm-text-2)" }}
+            onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "var(--adm-hover)"}
+            onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = ""}
+          >
+            <X size={16} />
+          </button>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>إلغاء</Button>
-          <Button onClick={handleSave} disabled={loading} className="bg-emerald-600 hover:bg-emerald-500 text-white">
-            حفظ التعديلات
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {/* Body */}
+        <div className="px-6 py-5 space-y-4">
+
+          {/* CheckIn / CheckOut */}
+          <div className="grid grid-cols-2 gap-3">
+            <FieldInput
+              label="وقت الحضور (Check-in)"
+              type="datetime-local"
+              dir="ltr"
+              value={formData.checkInAt}
+              onChange={(v) => setFormData(p => ({ ...p, checkInAt: v }))}
+              icon="login"
+            />
+            <FieldInput
+              label="وقت الانصراف (Check-out)"
+              type="datetime-local"
+              dir="ltr"
+              value={formData.checkOutAt}
+              onChange={(v) => setFormData(p => ({ ...p, checkOutAt: v }))}
+              icon="logout"
+            />
+          </div>
+
+          {/* Status / Mocked */}
+          <div className="grid grid-cols-2 gap-3">
+            <FieldSelect
+              label="حالة الزيارة"
+              value={formData.status}
+              onChange={(v) => setFormData(p => ({ ...p, status: v }))}
+              icon="flag"
+              options={[
+                { value: "checked_out", label: "✅ منتهية" },
+                { value: "checked_in", label: "🟡 مفتوحة" },
+              ]}
+            />
+            <FieldSelect
+              label="تلاعب (Mocked)"
+              value={formData.isMocked}
+              onChange={(v) => setFormData(p => ({ ...p, isMocked: v }))}
+              icon="gpp_bad"
+              options={[
+                { value: "no", label: "✅ لا (حقيقي)" },
+                { value: "yes", label: "⚠️ نعم (مزيف)" },
+              ]}
+            />
+          </div>
+
+          {/* Visit type / Note type */}
+          <div className="grid grid-cols-2 gap-3">
+            <FieldSelect
+              label="نوع الزيارة"
+              value={formData.visitType}
+              onChange={(v) => setFormData(p => ({ ...p, visitType: v }))}
+              icon="place"
+              options={[
+                { value: "branch", label: "🏢 فرع" },
+                { value: "external_mission", label: "🚗 مهمة خارجية" },
+              ]}
+            />
+            <FieldSelect
+              label="نوع الملاحظة"
+              value={formData.noteType}
+              onChange={(v) => setFormData(p => ({ ...p, noteType: v }))}
+              icon="label"
+              options={[
+                { value: "general", label: "عامة" },
+                { value: "short_visit", label: "زيارة قصيرة" },
+                { value: "non_primary", label: "غير أساسي" },
+                { value: "external_mission", label: "مهمة خارجية" },
+              ]}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3">
+            <FieldInput
+              label="المسافة للفرع السابق (Km)"
+              type="number"
+              dir="ltr"
+              value={formData.distanceToPrevBranchKm}
+              onChange={(v) => setFormData(p => ({ ...p, distanceToPrevBranchKm: v }))}
+              icon="directions_car"
+            />
+          </div>
+
+          {/* Notes */}
+          <FieldInput
+            label="الملاحظات"
+            value={formData.notes}
+            onChange={(v) => setFormData(p => ({ ...p, notes: v }))}
+            placeholder="أضف ملاحظة..."
+            icon="notes"
+          />
+
+        </div>
+
+        {/* Footer */}
+        <div
+          className="flex items-center justify-end gap-3 px-6 py-4 sticky bottom-0 z-10"
+          style={{ background: "var(--adm-surface)", borderTop: "1px solid var(--adm-border)", borderRadius: "0 0 20px 20px" }}
+        >
+          <button
+            onClick={() => onOpenChange(false)}
+            className="h-10 px-5 rounded-xl text-sm font-semibold transition-all"
+            style={{
+              background: "var(--adm-bg)",
+              border: "1px solid var(--adm-border)",
+              color: "var(--adm-text-2)",
+              fontFamily: "'Cairo', sans-serif",
+            }}
+          >
+            إلغاء
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={loading}
+            className="h-10 px-6 rounded-xl text-sm font-bold transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              background: loading ? "rgba(16,185,129,0.4)" : "#10b981",
+              color: "#fff",
+              fontFamily: "'Cairo', sans-serif",
+            }}
+          >
+            {loading && <Loader2 size={14} className="animate-spin" />}
+            {loading ? "جار الحفظ..." : "حفظ التعديلات"}
+          </button>
+        </div>
+      </div>
+    </>
   );
 }

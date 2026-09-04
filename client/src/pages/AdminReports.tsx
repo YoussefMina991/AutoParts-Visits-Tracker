@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Loader2, ChevronDown, ChevronUp, Download, Clock, CheckCircle2 } from "lucide-react";
 import { useSearch } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { format, startOfMonth, endOfMonth, isToday } from "date-fns";
+import { format, startOfMonth, endOfMonth, isToday, subMonths, addMonths, setDate } from "date-fns";
 import { ar } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { useLang, type TFunc } from "@/lib/i18n";
@@ -457,13 +457,25 @@ function DayCard({ group }: { group: DayGroup }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AdminReports() {
   const { t, lang } = useLang();
+  const { user } = useAuth();
   const locale: Locale = lang === "ar" ? ar : undefined;
   const hUnit = t("time.hourShort");
   const mUnit = t("time.minShort");
 
   const now = new Date();
-  const todayStr = format(now, "yyyy-MM-dd");
-  const [filters, setFilters] = useState({ managerId: "", startDate: todayStr, endDate: todayStr });
+  const currentDay = now.getDate();
+  const defaultStartDate = currentDay < 20 
+    ? format(setDate(subMonths(now, 1), 20), "yyyy-MM-dd") 
+    : format(setDate(now, 20), "yyyy-MM-dd");
+  const defaultEndDate = currentDay < 20 
+    ? format(setDate(now, 20), "yyyy-MM-dd") 
+    : format(setDate(addMonths(now, 1), 20), "yyyy-MM-dd");
+
+  const [filters, setFilters] = useState({
+    startDate: defaultStartDate,
+    endDate: defaultEndDate,
+    managerId: "",
+  });
   const [exporting, setExporting] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
