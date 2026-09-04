@@ -433,7 +433,7 @@ function DashboardLayoutBody({ children }: { children: React.ReactNode }) {
   const { t, isRTL } = useLang();
   const [location] = useLocation();
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
   const menuGroups = isAdmin ? adminMenuGroups : managerMenuGroups;
 
   return (

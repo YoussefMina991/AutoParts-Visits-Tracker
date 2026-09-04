@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 import { useLang, type TFunc } from "@/lib/i18n";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { SuperadminVisitModal } from "@/components/SuperadminVisitModal";
+import { SuperadminCreateVisitModal } from "@/components/SuperadminCreateVisitModal";
 import { toast } from "sonner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -461,12 +462,10 @@ export default function AdminReports() {
   const mUnit = t("time.minShort");
 
   const now = new Date();
-  const [filters, setFilters] = useState({
-    startDate: format(startOfMonth(now), "yyyy-MM-dd"),
-    endDate: format(endOfMonth(now), "yyyy-MM-dd"),
-    managerId: "",
-  });
+  const todayStr = format(now, "yyyy-MM-dd");
+  const [filters, setFilters] = useState({ managerId: "", startDate: todayStr, endDate: todayStr });
   const [exporting, setExporting] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   // ── Deep-link: /reports?managerId=<n> pre-filters the manager dropdown (Part B)
   const searchString = useSearch();
@@ -521,6 +520,13 @@ export default function AdminReports() {
 
   return (
     <div className="min-h-full pb-24 md:pb-8">
+      {user?.role === "superadmin" && (
+        <SuperadminCreateVisitModal
+          open={createModalOpen}
+          onOpenChange={setCreateModalOpen}
+          managers={managers as any[] || []}
+        />
+      )}
 
       {/* Mobile Header */}
       <header className="sticky top-0 z-30 bg-[var(--adm-surface)]/90 backdrop-blur border-b border-[var(--adm-border)] md:hidden">
@@ -549,12 +555,22 @@ export default function AdminReports() {
             <h1 className="text-[22px] font-bold text-[var(--adm-text-1)] tracking-tight" style={{ fontFamily: "'Cairo', sans-serif", letterSpacing: "-0.02em" }}>{t("reports.title")}</h1>
             <p className="text-[var(--adm-text-2)] text-[13px] mt-1">{monthLabel}</p>
           </div>
-          <button onClick={handleExport} disabled={exporting || visits.length === 0 || isLoading}
-            className="h-11 px-6 flex items-center gap-2 rounded-full text-sm font-bold transition-all hover:opacity-90 cursor-pointer disabled:opacity-40"
-            style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}>
-            {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            {exporting ? t("reports.exporting") : t("reports.exportExcel")}
-          </button>
+          <div className="flex items-center gap-2">
+            {user?.role === "superadmin" && (
+              <button onClick={() => setCreateModalOpen(true)}
+                className="h-11 px-5 flex items-center gap-2 rounded-full text-sm font-bold transition-all cursor-pointer"
+                style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 18 }}>add</span>
+                إضافة زيارة
+              </button>
+            )}
+            <button onClick={handleExport} disabled={exporting || visits.length === 0 || isLoading}
+              className="h-11 px-6 flex items-center gap-2 rounded-full text-sm font-bold transition-all hover:opacity-90 cursor-pointer disabled:opacity-40"
+              style={{ background: "var(--adm-accent)", color: "var(--adm-accent-fg)" }}>
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {exporting ? t("reports.exporting") : t("reports.exportExcel")}
+            </button>
+          </div>
         </div>
 
         {/* Filters */}

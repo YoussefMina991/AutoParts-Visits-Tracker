@@ -77,9 +77,9 @@ function ProtectedRouter() {
     return <LoginPage />;
   }
 
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.role === "admin" || user.role === "superadmin";
 
-  // ── Admin: white card layout ───────────────────────────────────────────────
+  // ── Admin / Superadmin: white card layout ─────────────────────────────────
   if (isAdmin) {
     return (
       <DashboardLayout>
