@@ -117,6 +117,7 @@ export async function listUsers() {
       name: users.name,
       email: users.email,
       role: users.role,
+      os: users.os,
       checkinMode: users.checkinMode,
       createdAt: users.createdAt,
       lastSignedIn: users.lastSignedIn,

@@ -218,10 +218,7 @@ export default function VisitHistory() {
                         <span className="tag" style={{ background: "rgba(139,92,246,0.12)", color: "#8b5cf6", marginTop: 4, display: "inline-block", marginLeft: 6 }}>مأمورية خارجية</span>
                       )}
                       {visit.noteType === "short_visit" && (
-                        <span className="tag" style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", marginTop: 4, display: "inline-block", marginLeft: 6 }}>زيارة قصيرة</span>
-                      )}
-                      {visit.isMocked === "yes" && (
-                        <span className="tag" style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", marginTop: 4, display: "inline-block", marginLeft: 6 }}>وهمية</span>
+                        <span className="tag" style={{ background: "rgba(245,158,11,0.12)", color: "#f59e0b", marginTop: 4, display: "inline-block", marginLeft: 6 }}>زيارة قصيرة</span>
                       )}
                     </div>
                     {visit.notes && (

@@ -54,6 +54,18 @@ export function registerOAuthRoutes(app: Express) {
         return;
       }
 
+      // فحص إضافي: حساب الأندرويد لا يمكنه الدخول من المتصفح
+      if (!isAdmin && platform === "web" && user.os === "android") {
+        res.status(403).json({ error: "هذا الحساب مخصص لتطبيق الأندرويد فقط — لا يمكن الدخول من المتصفح" });
+        return;
+      }
+
+      // فحص إضافي: حساب الآيفون لا يمكنه الدخول من التطبيق النيتف
+      if (!isAdmin && platform === "mobile" && user.os === "ios") {
+        res.status(403).json({ error: "هذا الحساب مخصص لمتصفح الآيفون فقط — استخدم الرابط عبر Safari" });
+        return;
+      }
+
       // ثالثا: Device/Browser Binding
       if (!isAdmin) {
         if (platform === "mobile") {

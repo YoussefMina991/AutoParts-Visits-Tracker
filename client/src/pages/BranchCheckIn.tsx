@@ -101,7 +101,7 @@ export default function BranchCheckIn() {
     if (type === "check_in_external" && !visitNotes.trim()) {
       return toast.error("برجاء إدخال تفاصيل المأمورية الخارجية");
     }
-    if (type === "check_out_short" && !visitNotes.trim()) {
+    if (type === "check_out_short" && !visitNotes.trim() && !isWebPlatform) {
       return toast.error("برجاء إدخال سبب قصر مدة الزيارة");
     }
 
@@ -544,8 +544,8 @@ export default function BranchCheckIn() {
           </div>
         )}
 
-        {/* أوفرلاي انتظار/مشكلة الـ GPS */}
-        {view === "map" && !gpsLocation && (
+        {/* أوفرلاي انتظار/مشكلة الـ GPS — يختفي لو في زيارة نشطة */}
+        {view === "map" && !gpsLocation && !activeVisit && (
           <div className="map-overlay-gps">
             <Loader2 className="w-8 h-8 animate-spin text-[#0fa5f8]" />
             <p style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>جاري تحديد موقعك...</p>

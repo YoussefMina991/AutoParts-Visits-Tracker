@@ -4,6 +4,7 @@ const NAV_ITEMS = [
   { icon: "home",          label: "الرئيسية",   path: "/" },
   { icon: "location_on",   label: "الفروع",     path: "/check-in" },
   { icon: "history",       label: "السجل",      path: "/history" },
+  { icon: "bar_chart",     label: "تقاريري",    path: "/reports" },
   { icon: "sync",          label: "المزامنة",   path: "/sync" },
 ];
 

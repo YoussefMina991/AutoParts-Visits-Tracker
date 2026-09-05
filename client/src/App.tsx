@@ -17,6 +17,7 @@ import AdminReports from "./pages/AdminReports";
 import AdminUsers from "./pages/AdminUsers";
 import AdminLiveTracking from "./pages/AdminLiveTracking";
 import SyncPage from "./pages/SyncPage";
+import ManagerReports from "./pages/ManagerReports";
 import { DashboardLayoutSkeleton } from "./components/DashboardLayoutSkeleton";
 import { useGeofence } from "./hooks/useGeofence";
 import { LocationPermissionGuide } from "./components/LocationPermissionGuide";
@@ -104,6 +105,7 @@ function ProtectedRouter() {
       <Route path="/dashboard" component={ManagerDashboard} />
       <Route path="/check-in" component={BranchCheckIn} />
       <Route path="/history" component={VisitHistory} />
+      <Route path="/reports" component={ManagerReports} />
       <Route path="/sync" component={SyncPage} />
       <Route component={NotFound} />
     </Switch>

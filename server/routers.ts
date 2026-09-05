@@ -54,17 +54,23 @@ export const appRouter = router({
         name: z.string().optional(),
         email: z.string().email().optional(),
         role: z.enum(["user", "admin"]).default("user"),
+        // نظام التشغيل — ios يُجبر على manual تلقائياً
+        os: z.enum(["android", "ios"]).default("android"),
       }))
       .mutation(async ({ input }) => {
         const existing = await db.getUserByUsername(input.username);
         if (existing) throw new TRPCError({ code: "CONFLICT", message: "اسم المستخدم موجود بالفعل" });
         const passwordHash = await hashPassword(input.password);
+        // آيفون → يدوي دائماً (لا geofence تلقائي في المتصفح)
+        const checkinMode = input.os === "ios" ? "manual" : "automatic";
         await db.createUser({
           username: input.username,
           passwordHash,
           name: input.name ?? null,
           email: input.email ?? null,
           role: input.role,
+          os: input.os,
+          checkinMode,
           lastSignedIn: new Date(),
         });
         return { success: true };
@@ -79,6 +85,7 @@ export const appRouter = router({
         name: z.string().optional(),
         email: z.string().email().optional().or(z.literal("")),
         role: z.enum(["user", "admin"]).optional(),
+        os: z.enum(["android", "ios"]).optional(),
       }))
       .mutation(async ({ input }) => {
         const { id, password, ...rest } = input;
@@ -96,6 +103,10 @@ export const appRouter = router({
         const updateData: Record<string, any> = { ...rest };
         if (rest.email === "") updateData.email = null;
         if (password) updateData.passwordHash = await hashPassword(password);
+        // لو تغير النظام إلى ios، اجبر على manual
+        if (rest.os === "ios" && existing.checkinMode !== "manual") {
+          updateData.checkinMode = "manual";
+        }
 
         await db.updateUser(id, updateData);
         return { success: true };
@@ -169,6 +180,7 @@ export const appRouter = router({
         name: z.string().optional(),
         email: z.string().email().optional().or(z.literal("")),
         role: z.enum(["user", "admin", "superadmin"]).optional(),
+        os: z.enum(["android", "ios"]).optional(),
         checkinMode: z.enum(["automatic", "manual"]).optional(),
         boundDeviceId: z.string().nullable().optional(),
         boundWebFingerprint: z.string().nullable().optional(),
@@ -186,6 +198,10 @@ export const appRouter = router({
         const updateData: any = { ...rest };
         if (rest.email === "") updateData.email = null;
         if (password) updateData.passwordHash = await hashPassword(password);
+        // لو تغير النظام إلى ios، اجبر على manual تلقائياً
+        if (rest.os === "ios" && !rest.checkinMode) {
+          updateData.checkinMode = "manual";
+        }
         
         await db.updateUser(id, updateData);
         return { success: true };

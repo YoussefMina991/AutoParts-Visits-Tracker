@@ -24,6 +24,7 @@ type CreateForm = {
   name: string;
   email: string;
   role: "user" | "admin";
+  os: "android" | "ios";
 };
 type EditForm = CreateForm & { id: number };
 const emptyCreate: CreateForm = {
@@ -32,6 +33,7 @@ const emptyCreate: CreateForm = {
   name: "",
   email: "",
   role: "user",
+  os: "android",
 };
 
 // ─── Shared Field ─────────────────────────────────────────────────────────────
@@ -262,6 +264,7 @@ export default function AdminUsers() {
       name: form.name || undefined,
       email: form.email || undefined,
       role: form.role,
+      os: form.os,
     });
   };
 
@@ -490,8 +493,8 @@ export default function AdminUsers() {
                         >
                           {isAdminUser ? t("users.roleAdmin") : t("users.roleManager")}
                         </span>
-                        {/* 🔒 حالة ربط الجهاز — للمديرين فقط */}
-                        {!isAdminUser && (
+                        {/* 🔒 حالة ربط الجهاز — للمديرين على الأندرويد فقط */}
+                        {!isAdminUser && u.os !== "ios" && (
                           <span
                             className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
                             style={{
@@ -500,17 +503,29 @@ export default function AdminUsers() {
                             }}
                             title={u.isDeviceBound ? t("users.deviceBoundTitle") : t("users.deviceUnboundTitle")}
                           >
-                            <span
-                              className="material-symbols-outlined"
-                              style={{ fontSize: 11 }}
-                            >
+                            <span className="material-symbols-outlined" style={{ fontSize: 11 }}>
                               {u.isDeviceBound ? "smartphone" : "smartphone_question"}
                             </span>
                             {u.isDeviceBound ? t("users.deviceBound") : t("users.deviceUnbound")}
                           </span>
                         )}
-                        {/* 🌐 بادج ربط المتصفح (Web Fingerprint) — للمديرين على الويب */}
+                        {/* 🍎 بادج نظام التشغيل */}
                         {!isAdminUser && (
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1"
+                            style={{
+                              background: u.os === "ios" ? "rgba(139,92,246,0.15)" : "rgba(34,197,94,0.12)",
+                              color: u.os === "ios" ? "#a78bfa" : "#22c55e",
+                            }}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: 11 }}>
+                              {u.os === "ios" ? "phone_iphone" : "android"}
+                            </span>
+                            {u.os === "ios" ? "iOS" : "Android"}
+                          </span>
+                        )}
+                        {/* 🌐 بادج ربط المتصفح (Web Fingerprint) — للمديرين على الآيفون فقط */}
+                        {!isAdminUser && u.os === "ios" && (
                           <span
                             className="text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 cursor-pointer"
                             style={{
@@ -524,14 +539,12 @@ export default function AdminUsers() {
                               }
                             }}
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: 11 }}>
-                              {u.isWebBound ? "language" : "language"}
-                            </span>
-                            {u.isWebBound ? "ويب مربوط" : "ويب حر"}
+                            <span className="material-symbols-outlined" style={{ fontSize: 11 }}>language</span>
+                            {u.isWebBound ? "Safari مربوط" : "Safari حر"}
                           </span>
                         )}
-                        {/* وضع تسجيل الدخول — يغير السلوك من تلقائي لى يدوي */}
-                        {!isAdminUser && (
+                        {/* وضع تسجيل الدخول — يغير السلوك من تلقائي لى يدوي (أندرويد فقط) */}
+                        {!isAdminUser && u.os !== "ios" && (
                           <select
                             value={u.checkinMode ?? "automatic"}
                             disabled={checkinModeMutation.isPending}
@@ -813,6 +826,38 @@ export default function AdminUsers() {
                 onChange={(v) => setForm((f) => ({ ...f, role: v }))}
               />
             </Field>
+
+            {/* نظام تشغيل الجهاز — يحدد المنصة المسموح بها ونوع الوصول */}
+            {form.role === "user" && (
+              <Field label="جهاز المدير" icon="devices">
+                <div className="grid grid-cols-2 gap-2">
+                  {(["android", "ios"] as const).map((osOption) => {
+                    const active = form.os === osOption;
+                    return (
+                      <button
+                        key={osOption}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, os: osOption }))}
+                        className="flex items-center gap-2 p-3 rounded-xl border transition-all cursor-pointer"
+                        style={{
+                          background: active ? (osOption === "ios" ? "rgba(139,92,246,0.2)" : "rgba(34,197,94,0.15)") : "var(--adm-bg)",
+                          borderColor: active ? (osOption === "ios" ? "#a78bfa" : "#22c55e") : "var(--adm-border)",
+                          color: active ? (osOption === "ios" ? "#a78bfa" : "#22c55e") : "var(--adm-text-2)",
+                        }}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: 18, fontVariationSettings: active ? "'FILL' 1" : "'FILL' 0" }}>
+                          {osOption === "ios" ? "phone_iphone" : "android"}
+                        </span>
+                        <div className="text-right">
+                          <div className="font-bold text-[13px]">{osOption === "ios" ? "آيفون (iOS)" : "أندرويد"}</div>
+                          <div className="text-[10px] opacity-60">{osOption === "ios" ? "Safari فقط — يدوي" : "تطبيق فقط — تلقائي"}</div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <Field label={t("users.fieldUsername")} icon="alternate_email">

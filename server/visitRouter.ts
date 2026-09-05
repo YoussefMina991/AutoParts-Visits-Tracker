@@ -501,6 +501,8 @@ export const visitRouter = router({
         status: visits.status, photoUrl: visits.photoUrl, notes: visits.notes,
         distanceToPrevBranchKm: visits.distanceToPrevBranchKm,
         isMocked: visits.isMocked,
+        // ✅ أسباب التلاعب — تظهر فقط للأدمن في التقارير
+        mockReasons: visits.mockReasons,
         visitType: visits.visitType, noteType: visits.noteType,
         branchName: branches.name, branchId: branches.id, branchCode: branches.code,
         managerName: users.name, managerEmail: users.email,
@@ -816,5 +818,54 @@ export const visitRouter = router({
 
       await db.insert(visits).values(updateData);
       return { success: true };
+    }),
+
+  // ── GET — تقرير المدير الشهري (بدون أي معلومات وهمية) ─────────────────────
+  // يُستخدم من صفحة تقارير المدير — نظيف تماماً من mockReasons/isMocked
+  myReport: protectedProcedure
+    .input(z.object({
+      startDate: z.string().max(32).optional(),
+      endDate: z.string().max(32).optional(),
+      limit: z.number().int().min(1).max(1000).default(500),
+      offset: z.number().int().min(0).default(0),
+    }))
+    .query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      const managerResult = await db.select().from(managers).where(eq(managers.userId, ctx.user!.id)).limit(1);
+      if (!managerResult[0]) return { items: [], total: 0 };
+      const managerId = managerResult[0].id;
+
+      const conditions: any[] = [eq(visits.managerId, managerId)];
+      if (input.startDate) conditions.push(gte(visits.checkInAt, new Date(input.startDate)));
+      if (input.endDate) {
+        const end = new Date(input.endDate);
+        end.setHours(23, 59, 59, 999);
+        conditions.push(lte(visits.checkInAt, end));
+      }
+      const whereClause = and(...conditions);
+
+      const [{ total }] = await db.select({ total: count() }).from(visits).where(whereClause);
+      const items = await db.select({
+        id: visits.id,
+        checkInAt: visits.checkInAt,
+        checkOutAt: visits.checkOutAt,
+        status: visits.status,
+        visitType: visits.visitType,
+        noteType: visits.noteType,
+        notes: visits.notes,
+        distanceToPrevBranchKm: visits.distanceToPrevBranchKm,
+        // لا نُرسل isMocked ولا mockReasons للمدير أبداً
+        branchName: branches.name,
+        branchId: branches.id,
+        branchCode: branches.code,
+        branchAddress: branches.address,
+      }).from(visits)
+        .leftJoin(branches, eq(visits.branchId, branches.id))
+        .where(whereClause)
+        .orderBy(desc(visits.checkInAt))
+        .limit(input.limit)
+        .offset(input.offset);
+      return { items, total };
     }),
 });
