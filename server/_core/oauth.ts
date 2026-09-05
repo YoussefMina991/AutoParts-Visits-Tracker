@@ -40,7 +40,7 @@ export function registerOAuthRoutes(app: Express) {
       }
 
       // ثانيا: فصل المنصات
-      const isAdmin = user.role === "admin";
+      const isAdmin = user.role === "admin" || user.role === "superadmin";
 
       // الادمن: ويب فقط
       if (isAdmin && platform === "mobile") {

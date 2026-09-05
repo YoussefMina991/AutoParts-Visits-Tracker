@@ -105,9 +105,8 @@ export default function BranchCheckIn() {
       return toast.error("برجاء إدخال سبب قصر مدة الزيارة");
     }
 
-    // الصورة المحفوظة من شاشة الـ Selfie (ويب فقط)
-    const selfieBase64 = selfieState.capturedBase64;
-
+    // الصورة المحفوظة من شاشة الـ Selfie تم إيقافها
+    
     try {
       if (type === "check_in_branch") {
         if (!branchId) return;
