@@ -122,6 +122,8 @@ export async function listUsers() {
       lastSignedIn: users.lastSignedIn,
       boundDeviceId: users.boundDeviceId,
       deviceBoundAt: users.deviceBoundAt,
+      boundWebFingerprint: users.boundWebFingerprint,
+      webFingerprintAt: users.webFingerprintAt,
     }).from(users).where(ne(users.role, "superadmin")).orderBy(users.name);
   });
 }
